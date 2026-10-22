@@ -11,6 +11,7 @@ const helmet = require('helmet');
 const QRCode = require('qrcode');
 
 const app = express();
+app.set('trust proxy', 'loopback');
 const port = Number(process.env.PORT || 3000);
 const databasePath = process.env.DATABASE_PATH || path.join(__dirname, 'data', 'attendance');
 const sessionSecret = process.env.SESSION_SECRET;
