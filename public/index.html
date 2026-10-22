@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1d8a3d">
+  <title>Agile in Africa | Attendance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <main id="auth-screen" class="auth-layout" hidden>
+    <section class="auth-story">
+      <a class="wordmark wordmark-light" href="/" aria-label="Agile in Africa conference 2026"><img class="brand-logo" src="/aia-logo.svg" alt=""><span class="brand-copy"><strong>Agile in <em>Africa</em></strong><small>CONFERENCE 2026</small></span></a>
+      <div class="story-content">
+        <p class="eyebrow">A better welcome starts here</p>
+        <h1>Make every<br>arrival count.</h1>
+        <p class="story-copy">One considered place to manage your guest list, welcome your people, and see the room come to life.</p>
+      </div>
+      <div class="story-foot"><span>REGISTRATION</span><i></i><span>WELCOME</span><i></i><span>TOGETHER</span></div>
+    </section>
+    <section class="auth-panel">
+      <div class="auth-mobile-brand"><a class="wordmark" href="/"><img class="brand-logo" src="/aia-logo.svg" alt=""><span class="brand-copy"><strong>Agile in <em>Africa</em></strong><small>CONFERENCE 2026</small></span></a></div>
+      <div class="auth-box">
+        <div class="auth-heading"><p class="eyebrow" id="auth-eyebrow">YOUR EVENT, IN GOOD HANDS</p><h2 id="auth-title">Welcome back</h2><p id="auth-subtitle">Sign in to open your event workspace.</p></div>
+        <div class="auth-tabs" role="tablist" aria-label="Account access">
+          <button class="auth-tab active" data-auth-mode="login" role="tab" aria-selected="true">Sign in</button>
+          <button class="auth-tab" data-auth-mode="register" role="tab" aria-selected="false">Create account</button>
+        </div>
+        <form id="auth-form" class="form-stack">
+          <label class="field register-only" hidden>Your name<input name="name" autocomplete="name" maxlength="120" placeholder="Jordan Lee"></label>
+          <label class="field register-only" hidden>Event name<input name="eventName" maxlength="160" placeholder="Agile in Africa 2026"></label>
+          <label class="field">Email address<input name="email" type="email" autocomplete="email" required placeholder="you@company.com"></label>
+          <label class="field">Password<input name="password" type="password" autocomplete="current-password" minlength="10" maxlength="128" required placeholder="At least 10 characters"></label>
+          <label class="field register-only" hidden>Confirm password<input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" placeholder="Type the password again"></label>
+          <p class="form-error" id="auth-error" aria-live="polite"></p>
+          <button class="button button-primary button-wide" id="auth-submit" type="submit">Sign in <span aria-hidden="true">→</span></button>
+        </form>
+        <p class="auth-privacy">Your guest list stays in your event workspace.</p>
+      </div>
+      <span class="auth-copyright">AGILE IN AFRICA · CONFERENCE 2026</span>
+    </section>
+  </main>
+
+  <div id="dashboard-screen" class="dashboard-layout" hidden>
+    <aside class="sidebar">
+      <a class="wordmark" href="#overview" aria-label="Agile in Africa dashboard"><img class="brand-logo" src="/aia-logo.svg" alt=""><span class="brand-copy"><strong>Agile in <em>Africa</em></strong><small>CONFERENCE 2026</small></span></a>
+      <div class="workspace-label">EVENT WORKSPACE</div>
+      <div class="sidebar-event"><span class="event-dot"></span><span id="sidebar-event-name">Your event</span></div>
+      <nav class="side-nav" aria-label="Main navigation">
+        <button class="nav-link active" data-view="overview"><span class="nav-glyph">◫</span>Overview</button>
+        <button class="nav-link" data-view="attendees"><span class="nav-glyph">◎</span>Guest list</button>
+        <button class="nav-link" data-view="qr"><span class="nav-glyph">▦</span>Entrance QR</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="admin-profile"><span class="avatar" id="admin-avatar">A</span><span class="profile-copy"><strong id="admin-name">Admin</strong><small id="admin-email"></small></span></div>
+        <button class="signout-button" id="signout-button">Sign out <span aria-hidden="true">↗</span></button>
+      </div>
+    </aside>
+
+    <main class="dashboard-main">
+      <header class="topbar">
+        <div class="breadcrumb"><span>Workspace</span><span class="crumb-slash">/</span><strong id="topbar-event-name">Your event</strong></div>
+        <div class="topbar-actions"><span class="live-indicator"><i></i>Live event</span><button class="button button-primary button-small" id="add-attendee-top">＋ <span>Add guest</span></button></div>
+      </header>
+      <div class="dashboard-content">
+        <section class="view-panel active" id="view-overview">
+          <div class="page-heading">
+            <div><p class="eyebrow">EVENT AT A GLANCE</p><h1>Good day, <span id="greeting-name">there</span>.</h1><p class="page-subtitle">Here’s what’s happening with your guest list.</p></div>
+            <button class="button button-outline" id="edit-event-button">Edit event name</button>
+          </div>
+          <div class="metric-grid">
+            <article class="metric-card metric-registered"><div class="metric-top"><span>Registered guests</span><span class="metric-symbol">01</span></div><strong id="registered-count">0</strong><small>Total on your guest list</small></article>
+            <article class="metric-card metric-arrived"><div class="metric-top"><span>Arrived</span><span class="metric-symbol">02</span></div><strong id="attended-count">0</strong><small>Checked in at the entrance</small></article>
+            <article class="metric-card metric-rate"><div class="metric-top"><span>Attendance rate</span><span class="metric-symbol">03</span></div><strong id="attendance-rate">0<span class="metric-percent">%</span></strong><small>Of all registered guests</small></article>
+          </div>
+          <section class="content-section overview-table-section">
+            <div class="section-heading"><div><p class="eyebrow">THE DOOR</p><h2>Recent arrivals</h2></div><button class="text-button" data-open-view="attendees">Full guest list <span aria-hidden="true">→</span></button></div>
+            <div class="table-wrap"><table><thead><tr><th>GUEST</th><th>COMPANY</th><th>PROFESSION</th><th>ARRIVAL TIME</th><th>STATUS</th></tr></thead><tbody id="recent-table-body"></tbody></table><div class="empty-state" id="recent-empty">No arrivals just yet. Your guests will appear here when they check in.</div></div>
+          </section>
+          <section class="event-strip"><img class="strip-mark" src="/aia-logo.svg" alt=""><div><p class="eyebrow">YOUR ENTRANCE IS READY</p><h3>Make check-in easy.</h3><p>Print your entrance QR and place it where every guest can see it.</p></div><button class="button button-dark" data-open-view="qr">View entrance QR <span aria-hidden="true">→</span></button></section>
+        </section>
+
+        <section class="view-panel" id="view-attendees">
+          <div class="page-heading list-heading"><div><p class="eyebrow">YOUR PEOPLE</p><h1>Guest list</h1><p class="page-subtitle"><span id="list-count">0</span> registered for <span id="list-event-name">your event</span>.</p></div><button class="button button-primary" id="add-attendee-list">＋ Add guest</button></div>
+          <section class="content-section guest-list-section">
+            <div class="list-toolbar"><label class="search-field"><span aria-hidden="true">⌕</span><input id="guest-search" type="search" placeholder="Search name, company, email…" aria-label="Search guest list"></label><label class="filter-label"><span class="sr-only">Filter attendance</span><select id="attendance-filter"><option value="all">Everyone</option><option value="attended">Arrived</option><option value="pending">Not arrived</option></select></label></div>
+            <div class="table-wrap"><table><thead><tr><th>GUEST</th><th>CONTACT</th><th>COMPANY</th><th>PROFESSION</th><th>ARRIVAL</th><th></th></tr></thead><tbody id="guest-table-body"></tbody></table><div class="empty-state" id="guest-empty">Your guest list is waiting. Add your first guest to get started.</div><div class="empty-state" id="search-empty" hidden>No guests match that search.</div></div>
+          </section>
+        </section>
+
+        <section class="view-panel" id="view-qr">
+          <div class="page-heading"><div><p class="eyebrow">AT THE DOOR</p><h1>Entrance QR</h1><p class="page-subtitle">One scan opens check-in for <span id="qr-event-name">your event</span>.</p></div></div>
+          <section class="qr-layout">
+            <div class="qr-print-sheet"><div class="qr-sheet-brand"><img class="brand-logo" src="/aia-logo.svg" alt=""><span class="brand-copy"><strong>Agile in <em>Africa</em></strong><small>CONFERENCE 2026</small></span><span class="qr-sheet-tag">GUEST CHECK-IN</span></div><h2 id="qr-sheet-event">Agile in Africa 2026</h2><p class="qr-sheet-caption">Scan to find your registration<br>and mark your arrival.</p><img id="qr-image" alt="QR code for guest check-in"><div class="qr-sheet-foot"><span>28 &amp; 29 OCTOBER · ISSER HALL</span><span>AGILE IN AFRICA</span></div></div>
+            <div class="qr-details"><p class="eyebrow">READY TO WELCOME</p><h2>Put the door<br>on autopilot.</h2><p>Print this code and place it at your entrance. Guests scan, find their registration, and confirm they’re here.</p><a class="qr-url" id="qr-url" href="#" target="_blank" rel="noreferrer"></a><div class="qr-actions"><button class="button button-primary" id="print-qr">Print entrance sign <span aria-hidden="true">↗</span></button><button class="button button-outline" id="copy-qr-link">Copy check-in link</button></div><p class="qr-note">The check-in link must be reachable by guests on their phones. Set your public app address in <code>APP_URL</code> before printing.</p></div>
+          </section>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <main id="checkin-screen" class="checkin-page" hidden>
+    <header class="checkin-topbar"><a class="wordmark" href="/" aria-label="Agile in Africa"><img class="brand-logo" src="/aia-logo.svg" alt=""><span class="brand-copy"><strong>Agile in <em>Africa</em></strong><small>CONFERENCE 2026</small></span></a><span class="checkin-label"><i></i>GUEST CHECK-IN</span></header>
+    <section class="checkin-main">
+      <div class="checkin-intro"><p class="eyebrow">YOU’RE IN THE RIGHT PLACE</p><h1 id="checkin-title">Welcome.</h1><p class="checkin-subtitle">Enter your registered name and we’ll find your details.</p></div>
+      <form id="find-form" class="find-form"><label class="field">Your full name<input id="find-name" name="name" autocomplete="name" required maxlength="120" placeholder="As it appears on your registration"></label><p class="form-error" id="find-error" aria-live="polite"></p><button class="button button-primary button-wide" type="submit" id="find-button">Find me <span aria-hidden="true">→</span></button></form>
+      <div class="register-prompt" id="register-prompt" hidden><p>We couldn't find a registration with that name.</p><button class="button button-outline" id="show-register-button" type="button">Register here <span aria-hidden="true">→</span></button></div>
+      <section class="public-register-panel" id="public-register-panel" hidden>
+        <div class="public-register-heading"><p class="eyebrow">JOIN THE GUEST LIST</p><h2>Register for the event</h2><p>Your details will be saved so you can check in.</p></div>
+        <form id="public-register-form" class="form-stack">
+          <label class="field">Full name<input name="name" autocomplete="name" required maxlength="120" placeholder="Your full name"></label>
+          <label class="field">Email<input name="email" type="email" autocomplete="email" required maxlength="180" placeholder="you@example.com"></label>
+          <label class="field">Phone<input name="phone" type="tel" autocomplete="tel" required maxlength="40" placeholder="Your phone number"></label>
+          <label class="field">Organisation<input name="company" autocomplete="organization" required maxlength="120" placeholder="Your organisation"></label>
+          <label class="field">Profession<input name="profession" maxlength="120" placeholder="Your role or field"></label>
+          <label class="field">Other details<textarea name="notes" rows="3" maxlength="1000" placeholder="Anything else the event team should know"></textarea></label>
+          <p class="form-error" id="public-register-error" aria-live="polite"></p>
+          <div class="public-register-actions"><button class="button button-outline" id="cancel-public-register" type="button">Back</button><button class="button button-primary" id="submit-public-register" type="submit">Register <span aria-hidden="true">→</span></button></div>
+        </form>
+      </section>
+      <p class="register-success" id="register-success" role="status" hidden>Registration saved. Search your name below to review your details and check in.</p>
+      <div class="match-list" id="match-list" aria-live="polite"></div>
+      <div class="checkin-help"><span>Need a hand?</span><p>Please ask a member of the event team at the entrance.</p></div>
+    </section>
+    <footer class="checkin-footer"><span>AGILE IN AFRICA · 28 &amp; 29 OCTOBER 2026</span><span>ISSER HALL · UNIVERSITY OF GHANA</span></footer>
+  </main>
+
+  <dialog id="attendee-dialog" class="modal">
+    <form id="attendee-form" class="modal-form">
+      <div class="modal-heading"><div><p class="eyebrow" id="modal-eyebrow">ADD TO YOUR GUEST LIST</p><h2 id="modal-title">New guest</h2></div><button class="icon-close" type="button" data-close-modal aria-label="Close dialog">×</button></div>
+      <div class="form-grid">
+        <label class="field field-span">Full name <span class="required-mark">*</span><input name="name" required maxlength="120" placeholder="Guest full name"></label>
+        <label class="field">Email<input name="email" type="email" maxlength="180" required placeholder="guest@email.com"></label>
+        <label class="field">Phone<input name="phone" type="tel" maxlength="40" required placeholder="+1 555 000 0000"></label>
+        <label class="field field-span">Organisation<input name="company" maxlength="120" required placeholder="Guest organisation"></label>
+        <label class="field">Profession<input name="profession" maxlength="120" placeholder="Role or field"></label>
+        <label class="field field-span">Other details<textarea name="notes" rows="3" maxlength="1000" placeholder="Dietary needs, accessibility, or any notes"></textarea></label>
+      </div>
+      <p class="form-error" id="attendee-error" aria-live="polite"></p>
+      <div class="modal-actions"><button class="button button-outline" type="button" data-close-modal>Cancel</button><button class="button button-primary" type="submit" id="save-attendee-button">Save guest <span aria-hidden="true">→</span></button></div>
+    </form>
+  </dialog>
+
+  <dialog id="event-dialog" class="modal modal-compact">
+    <form id="event-form" class="modal-form"><div class="modal-heading"><div><p class="eyebrow">MAKE IT YOURS</p><h2>Event name</h2></div><button class="icon-close" type="button" data-close-modal aria-label="Close dialog">×</button></div><label class="field">What are you gathering for?<input name="eventName" maxlength="160" required></label><p class="form-error" id="event-error" aria-live="polite"></p><div class="modal-actions"><button class="button button-outline" type="button" data-close-modal>Cancel</button><button class="button button-primary" type="submit">Save name</button></div></form>
+  </dialog>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

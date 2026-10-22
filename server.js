@@ -1,0 +1,351 @@
+require('dotenv').config();
+
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const bcrypt = require('bcryptjs');
+const express = require('express');
+const { rateLimit } = require('express-rate-limit');
+const session = require('express-session');
+const helmet = require('helmet');
+const QRCode = require('qrcode');
+
+const app = express();
+const port = Number(process.env.PORT || 3000);
+const databasePath = process.env.DATABASE_PATH || path.join(__dirname, 'data', 'attendance');
+const sessionSecret = process.env.SESSION_SECRET;
+const defaultEventName = 'Agile in Africa 2026';
+let db;
+
+if (!sessionSecret || sessionSecret.length < 32 || sessionSecret === 'replace-this-with-a-long-random-secret') {
+  throw new Error('Set SESSION_SECRET to a random value at least 32 characters long.');
+}
+
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(express.json({ limit: '32kb' }));
+app.use(session({
+  store: new (class extends session.Store {
+    get(sid, callback) {
+      db.query('SELECT sess FROM app_sessions WHERE sid = $1 AND expire > now()', [sid])
+        .then(({ rows }) => callback(null, rows[0]?.sess || null), callback);
+    }
+
+    set(sid, sess, callback = () => {}) {
+      const expiresAt = sess.cookie?.expires || new Date(Date.now() + (sess.cookie?.maxAge || 12 * 60 * 60 * 1000));
+      db.query(
+        `INSERT INTO app_sessions (sid, sess, expire) VALUES ($1, $2::jsonb, $3)
+         ON CONFLICT (sid) DO UPDATE SET sess = EXCLUDED.sess, expire = EXCLUDED.expire`,
+        [sid, JSON.stringify(sess), expiresAt]
+      ).then(() => callback(null), callback);
+    }
+
+    destroy(sid, callback = () => {}) {
+      db.query('DELETE FROM app_sessions WHERE sid = $1', [sid]).then(() => callback(null), callback);
+    }
+
+    touch(sid, sess, callback = () => {}) {
+      const expiresAt = sess.cookie?.expires || new Date(Date.now() + (sess.cookie?.maxAge || 12 * 60 * 60 * 1000));
+      db.query('UPDATE app_sessions SET expire = $2 WHERE sid = $1', [sid, expiresAt]).then(() => callback(null), callback);
+    }
+  })(),
+  name: 'gather.sid',
+  secret: sessionSecret,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 1000 * 60 * 60 * 12
+  }
+}));
+
+const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false });
+const lookupLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false });
+
+function requireAdmin(req, res, next) {
+  if (!req.session.adminId) return res.status(401).json({ error: 'Please sign in to continue.' });
+  next();
+}
+
+function text(value, maxLength = 180) {
+  return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+}
+
+function attendeeFields(body) {
+  const fields = {
+    name: text(body.name, 120),
+    phone: text(body.phone, 40),
+    email: text(body.email, 180),
+    company: text(body.company, 120),
+    profession: text(body.profession, 120),
+    notes: text(body.notes, 1000)
+  };
+  if (!fields.name || !fields.email || !fields.phone || !fields.company) {
+    return { error: 'Full name, email, phone, and organisation are required.' };
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fields.email)) {
+    return { error: 'Enter a valid email address.' };
+  }
+  return { fields };
+}
+
+function adminView(row) {
+  return { id: row.id, name: row.name, email: row.email, eventName: row.event_name, publicToken: row.public_token };
+}
+
+app.get('/api/auth/session', async (req, res, next) => {
+  try {
+    if (!req.session.adminId) return res.json({ admin: null });
+    const result = await db.query('SELECT id, name, email, event_name, public_token FROM admins WHERE id = $1', [req.session.adminId]);
+    if (!result.rowCount) {
+      req.session.destroy(() => {});
+      return res.json({ admin: null });
+    }
+    res.json({ admin: adminView(result.rows[0]) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/auth/register', authLimit, async (req, res, next) => {
+  const name = text(req.body.name, 120);
+  const email = text(req.body.email, 180).toLowerCase();
+  const password = typeof req.body.password === 'string' ? req.body.password : '';
+  const eventName = text(req.body.eventName, 160) || defaultEventName;
+  if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 10 || password.length > 128) {
+    return res.status(400).json({ error: 'Enter your name, a valid email, and a password of at least 10 characters.' });
+  }
+  try {
+    const passwordHash = await bcrypt.hash(password, 12);
+    const result = await db.query(
+      'INSERT INTO admins (name, email, password_hash, event_name, public_token) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, email, event_name, public_token',
+      [name, email, passwordHash, eventName, crypto.randomUUID()]
+    );
+    req.session.adminId = result.rows[0].id;
+    res.status(201).json({ admin: adminView(result.rows[0]) });
+  } catch (error) {
+    if (error.code === '23505') return res.status(409).json({ error: 'An account with that email already exists.' });
+    next(error);
+  }
+});
+
+app.post('/api/auth/login', authLimit, async (req, res, next) => {
+  const email = text(req.body.email, 180).toLowerCase();
+  const password = typeof req.body.password === 'string' ? req.body.password : '';
+  try {
+    const result = await db.query('SELECT * FROM admins WHERE email = $1', [email]);
+    const admin = result.rows[0];
+    if (!admin || !(await bcrypt.compare(password, admin.password_hash))) {
+      return res.status(401).json({ error: 'Email or password is incorrect.' });
+    }
+    req.session.regenerate((error) => {
+      if (error) return next(error);
+      req.session.adminId = admin.id;
+      res.json({ admin: adminView(admin) });
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/auth/logout', requireAdmin, (req, res) => {
+  req.session.destroy((error) => {
+    if (error) return res.status(500).json({ error: 'Could not sign out.' });
+    res.clearCookie('gather.sid', { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production' });
+    res.json({ ok: true });
+  });
+});
+
+app.get('/api/dashboard', requireAdmin, async (req, res, next) => {
+  try {
+    const [summary, attendees] = await Promise.all([
+      db.query('SELECT count(*)::int AS registered, count(*) FILTER (WHERE attended_at IS NOT NULL)::int AS attended FROM attendees WHERE admin_id = $1', [req.session.adminId]),
+      db.query('SELECT id, name, phone, email, company, profession, notes, attended_at, created_at FROM attendees WHERE admin_id = $1 ORDER BY created_at DESC', [req.session.adminId])
+    ]);
+    res.json({ summary: summary.rows[0], attendees: attendees.rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch('/api/event', requireAdmin, async (req, res, next) => {
+  const eventName = text(req.body.eventName, 160);
+  if (!eventName) return res.status(400).json({ error: 'Enter an event name.' });
+  try {
+    const result = await db.query('UPDATE admins SET event_name = $1 WHERE id = $2 RETURNING id, name, email, event_name, public_token', [eventName, req.session.adminId]);
+    res.json({ admin: adminView(result.rows[0]) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/qr', requireAdmin, async (req, res, next) => {
+  try {
+    const result = await db.query('SELECT public_token FROM admins WHERE id = $1', [req.session.adminId]);
+    const baseUrl = (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    const url = `${baseUrl}/checkin/${result.rows[0].public_token}`;
+    res.json({ url, image: await QRCode.toDataURL(url, { width: 480, margin: 2, errorCorrectionLevel: 'H', color: { dark: '#1d8a3d', light: '#ffffff' } }) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/attendees', requireAdmin, async (req, res, next) => {
+  const { fields, error } = attendeeFields(req.body);
+  if (error) return res.status(400).json({ error });
+  try {
+    const result = await db.query(
+      'INSERT INTO attendees (admin_id, name, phone, email, company, profession, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, admin_id, name, phone, email, company, profession, notes, attended_at, created_at',
+      [req.session.adminId, fields.name, fields.phone, fields.email, fields.company, fields.profession, fields.notes]
+    );
+    res.status(201).json({ attendee: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put('/api/attendees/:id', requireAdmin, async (req, res, next) => {
+  const { fields, error } = attendeeFields(req.body);
+  if (error) return res.status(400).json({ error });
+  try {
+    const result = await db.query(
+      'UPDATE attendees SET name = $1, phone = $2, email = $3, company = $4, profession = $5, notes = $6 WHERE id = $7 AND admin_id = $8 RETURNING id, admin_id, name, phone, email, company, profession, notes, attended_at, created_at',
+      [fields.name, fields.phone, fields.email, fields.company, fields.profession, fields.notes, req.params.id, req.session.adminId]
+    );
+    if (!result.rowCount) return res.status(404).json({ error: 'Attendee not found.' });
+    res.json({ attendee: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete('/api/attendees/:id', requireAdmin, async (req, res, next) => {
+  try {
+    const result = await db.query('DELETE FROM attendees WHERE id = $1 AND admin_id = $2', [req.params.id, req.session.adminId]);
+    if (!result.rowCount) return res.status(404).json({ error: 'Attendee not found.' });
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/public/:token', async (req, res, next) => {
+  try {
+    const result = await db.query('SELECT event_name FROM admins WHERE public_token = $1', [req.params.token]);
+    if (!result.rowCount) return res.status(404).json({ error: 'This check-in link is invalid.' });
+    res.json({ eventName: result.rows[0].event_name });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/public/:token/register', lookupLimit, async (req, res, next) => {
+  const { fields, error } = attendeeFields(req.body);
+  if (error) return res.status(400).json({ error });
+  try {
+    const admin = await db.query('SELECT id FROM admins WHERE public_token = $1', [req.params.token]);
+    if (!admin.rowCount) return res.status(404).json({ error: 'This check-in link is invalid.' });
+    const result = await db.query(
+      'INSERT INTO attendees (admin_id, name, phone, email, company, profession, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, phone, email, company, profession, notes',
+      [admin.rows[0].id, fields.name, fields.phone, fields.email, fields.company, fields.profession, fields.notes]
+    );
+    res.status(201).json({ attendee: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/public/:token/find', lookupLimit, async (req, res, next) => {
+  const name = text(req.body.name, 120);
+  if (!name) return res.status(400).json({ error: 'Enter your full name.' });
+  try {
+    const result = await db.query(
+      `SELECT a.id, a.name, a.phone, a.email, a.company, a.profession, a.notes, a.attended_at
+       FROM attendees a JOIN admins d ON d.id = a.admin_id
+       WHERE d.public_token = $1 AND lower(a.name) = lower($2)
+       ORDER BY a.created_at`,
+      [req.params.token, name]
+    );
+    if (!result.rowCount) return res.status(404).json({ error: 'No registration found with that exact name. Check the spelling or ask the event team for help.' });
+    res.json({ attendees: result.rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/public/:token/attend', lookupLimit, async (req, res, next) => {
+  const attendeeId = text(req.body.attendeeId, 40);
+  try {
+    const result = await db.transaction((tx) => tx.query(
+      `UPDATE attendees a SET attended_at = COALESCE(a.attended_at, now())
+       FROM admins d WHERE a.admin_id = d.id AND d.public_token = $1 AND a.id = $2
+      RETURNING a.id, a.name, a.phone, a.email, a.company, a.profession, a.notes, a.attended_at`,
+      [req.params.token, attendeeId]
+    ));
+    if (!result.rowCount) {
+      return res.status(404).json({ error: 'Registration not found. Search your name again.' });
+    }
+    res.json({ attendee: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/checkin/:token', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.use((error, req, res, next) => {
+  console.error(error);
+  if (res.headersSent) return next(error);
+  res.status(500).json({ error: 'Something went wrong. Please try again.' });
+});
+
+async function start() {
+  const { PGlite } = await import('@electric-sql/pglite');
+  fs.mkdirSync(path.dirname(databasePath), { recursive: true });
+  db = await PGlite.create(databasePath);
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS admins (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      name text NOT NULL,
+      email text NOT NULL UNIQUE,
+      password_hash text NOT NULL,
+      event_name text NOT NULL,
+      public_token uuid NOT NULL UNIQUE,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS attendees (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      admin_id uuid NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+      name text NOT NULL,
+      phone text NOT NULL DEFAULT '',
+      email text NOT NULL DEFAULT '',
+      company text NOT NULL DEFAULT '',
+      profession text NOT NULL DEFAULT '',
+      notes text NOT NULL DEFAULT '',
+      attended_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS attendees_admin_created_idx ON attendees (admin_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS app_sessions (
+      sid text PRIMARY KEY,
+      sess jsonb NOT NULL,
+      expire timestamptz NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS app_sessions_expire_idx ON app_sessions (expire);
+  `);
+  setInterval(() => db.query('DELETE FROM app_sessions WHERE expire <= now()').catch(console.error), 60 * 60 * 1000).unref();
+  const server = app.listen(port, () => console.log(`Gather is running at http://localhost:${port}`));
+  const shutdown = () => server.close(async () => {
+    await db.close();
+    process.exit(0);
+  });
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
+}
+
+start().catch((error) => {
+  console.error('Could not start the app. Check the local database directory is writable:', error.message);
+  process.exit(1);
+});
