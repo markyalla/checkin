@@ -238,9 +238,11 @@ function renderMatches(attendees) {
     const card = element('article', 'match-card');
     card.append(element('h2', '', attendee.name), attendeeDetails(attendee));
     if (attendee.attended_at) {
-      card.append(element('p', 'checked-banner', `You’re checked in · ${formatDate(attendee.attended_at, true)}`));
+      const status = element('p', 'checked-banner', `Check-in successful · ${formatDate(attendee.attended_at, true)}`);
+      status.setAttribute('role', 'status');
+      card.append(status);
     } else {
-      const button = element('button', 'button button-primary button-wide', 'I’m here · Check in');
+      const button = element('button', 'button button-primary button-wide', 'Check in');
       button.type = 'button';
       button.dataset.attendId = attendee.id;
       card.append(button);
@@ -464,7 +466,7 @@ $('#match-list').addEventListener('click', async (event) => {
     const cards = [...$('#match-list').children];
     const card = cards.find((item) => item.querySelector('[data-attend-id]')?.dataset.attendId === button.dataset.attendId);
     if (card) renderMatches([result.attendee]);
-    toast('You’re checked in. Welcome!');
+    toast('Check-in successful. Welcome!');
   } catch (error) {
     button.disabled = false;
     toast(error.message, true);
