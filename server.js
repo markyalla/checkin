@@ -16,7 +16,16 @@ const port = Number(process.env.PORT || 3000);
 const databasePath = process.env.DATABASE_PATH || path.join(__dirname, 'data', 'attendance');
 const sessionSecret = process.env.SESSION_SECRET;
 const defaultEventName = 'Agile in Africa 2026';
+const dashboardClients = new Map();
 let db;
+
+function notifyDashboard(adminId) {
+  const clients = dashboardClients.get(adminId);
+  if (!clients) return;
+  for (const response of clients) {
+    if (!response.writableEnded) response.write('event: dashboard-update\ndata: {}\n\n');
+  }
+}
 
 if (!sessionSecret || sessionSecret.length < 32 || sessionSecret === 'replace-this-with-a-long-random-secret') {
   throw new Error('Set SESSION_SECRET to a random value at least 32 characters long.');
@@ -170,11 +179,34 @@ app.get('/api/dashboard', requireAdmin, async (req, res, next) => {
   }
 });
 
+app.get('/api/events', requireAdmin, (req, res) => {
+  const adminId = req.session.adminId;
+  res.set({
+    'Cache-Control': 'no-cache',
+    'Content-Type': 'text/event-stream',
+    'X-Accel-Buffering': 'no'
+  });
+  res.flushHeaders();
+  res.write('retry: 3000\n\n');
+
+  if (!dashboardClients.has(adminId)) dashboardClients.set(adminId, new Set());
+  const clients = dashboardClients.get(adminId);
+  clients.add(res);
+
+  const heartbeat = setInterval(() => res.write(': keep-alive\n\n'), 25000);
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    clients.delete(res);
+    if (!clients.size) dashboardClients.delete(adminId);
+  });
+});
+
 app.patch('/api/event', requireAdmin, async (req, res, next) => {
   const eventName = text(req.body.eventName, 160);
   if (!eventName) return res.status(400).json({ error: 'Enter an event name.' });
   try {
     const result = await db.query('UPDATE admins SET event_name = $1 WHERE id = $2 RETURNING id, name, email, event_name, public_token', [eventName, req.session.adminId]);
+    notifyDashboard(req.session.adminId);
     res.json({ admin: adminView(result.rows[0]) });
   } catch (error) {
     next(error);
@@ -200,6 +232,7 @@ app.post('/api/attendees', requireAdmin, async (req, res, next) => {
       'INSERT INTO attendees (admin_id, name, phone, email, company, profession, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, admin_id, name, phone, email, company, profession, notes, attended_at, created_at',
       [req.session.adminId, fields.name, fields.phone, fields.email, fields.company, fields.profession, fields.notes]
     );
+    notifyDashboard(req.session.adminId);
     res.status(201).json({ attendee: result.rows[0] });
   } catch (error) {
     next(error);
@@ -215,6 +248,7 @@ app.put('/api/attendees/:id', requireAdmin, async (req, res, next) => {
       [fields.name, fields.phone, fields.email, fields.company, fields.profession, fields.notes, req.params.id, req.session.adminId]
     );
     if (!result.rowCount) return res.status(404).json({ error: 'Attendee not found.' });
+    notifyDashboard(req.session.adminId);
     res.json({ attendee: result.rows[0] });
   } catch (error) {
     next(error);
@@ -225,6 +259,7 @@ app.delete('/api/attendees/:id', requireAdmin, async (req, res, next) => {
   try {
     const result = await db.query('DELETE FROM attendees WHERE id = $1 AND admin_id = $2', [req.params.id, req.session.adminId]);
     if (!result.rowCount) return res.status(404).json({ error: 'Attendee not found.' });
+    notifyDashboard(req.session.adminId);
     res.json({ ok: true });
   } catch (error) {
     next(error);
@@ -251,6 +286,7 @@ app.post('/api/public/:token/register', lookupLimit, async (req, res, next) => {
       'INSERT INTO attendees (admin_id, name, phone, email, company, profession, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, phone, email, company, profession, notes',
       [admin.rows[0].id, fields.name, fields.phone, fields.email, fields.company, fields.profession, fields.notes]
     );
+    notifyDashboard(admin.rows[0].id);
     res.status(201).json({ attendee: result.rows[0] });
   } catch (error) {
     next(error);
@@ -287,6 +323,11 @@ app.post('/api/public/:token/attend', lookupLimit, async (req, res, next) => {
     if (!result.rowCount) {
       return res.status(404).json({ error: 'Registration not found. Search your name again.' });
     }
+    const admin = await db.query(
+      'SELECT admin_id FROM attendees WHERE id = $1',
+      [attendeeId]
+    );
+    if (admin.rowCount) notifyDashboard(admin.rows[0].admin_id);
     res.json({ attendee: result.rows[0] });
   } catch (error) {
     next(error);
@@ -338,10 +379,16 @@ async function start() {
   `);
   setInterval(() => db.query('DELETE FROM app_sessions WHERE expire <= now()').catch(console.error), 60 * 60 * 1000).unref();
   const server = app.listen(port, () => console.log(`Gather is running at http://localhost:${port}`));
-  const shutdown = () => server.close(async () => {
-    await db.close();
-    process.exit(0);
-  });
+  const shutdown = () => {
+    for (const clients of dashboardClients.values()) {
+      for (const response of clients) response.end();
+    }
+    dashboardClients.clear();
+    server.close(async () => {
+      await db.close();
+      process.exit(0);
+    });
+  };
   process.once('SIGINT', shutdown);
   process.once('SIGTERM', shutdown);
 }

@@ -1,4 +1,4 @@
-const state = { admin: null, attendees: [], authMode: 'login', editingId: null, checkinToken: null };
+const state = { admin: null, attendees: [], authMode: 'login', editingId: null, checkinToken: null, lastLookupName: '', dashboardStream: null };
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
@@ -42,6 +42,8 @@ function formatDate(value, includeDate = false) {
 }
 
 function showAuth() {
+  state.dashboardStream?.close();
+  state.dashboardStream = null;
   $('#auth-screen').hidden = false;
   $('#dashboard-screen').hidden = true;
   $('#checkin-screen').hidden = true;
@@ -180,6 +182,20 @@ function renderGuestList() {
   $('#guest-table-body').closest('.table-wrap').querySelector('table').hidden = matching.length === 0;
 }
 
+function connectDashboardStream() {
+  if (state.dashboardStream) return;
+  const stream = new EventSource('/api/events');
+  state.dashboardStream = stream;
+  stream.addEventListener('dashboard-update', () => {
+    refreshDashboard().catch((error) => toast(error.message, true));
+  });
+  stream.addEventListener('error', () => {
+    if (stream.readyState === EventSource.CLOSED && state.dashboardStream === stream) {
+      state.dashboardStream = null;
+    }
+  });
+}
+
 async function refreshDashboard() {
   const [session, dashboard] = await Promise.all([api('/api/auth/session'), api('/api/dashboard')]);
   state.admin = session.admin;
@@ -191,6 +207,7 @@ async function refreshDashboard() {
   $('#greeting-name').textContent = state.admin.name.split(/\s+/)[0];
   setEventName(state.admin.eventName);
   renderDashboard();
+  connectDashboardStream();
 }
 
 function openAttendeeDialog(attendee = null) {
@@ -398,28 +415,38 @@ $('#copy-qr-link').addEventListener('click', async () => {
 
 $('#find-form').addEventListener('submit', async (event) => {
   event.preventDefault();
+  state.lastLookupName = $('#find-name').value.trim();
   $('#find-error').textContent = '';
+  $('#find-success').textContent = '';
+  $('#find-success').hidden = true;
   $('#register-prompt').hidden = true;
+  $('#register-success').hidden = true;
   $('#match-list').replaceChildren();
   const button = $('#find-button');
   button.disabled = true;
   try {
     const result = await api(`/api/public/${state.checkinToken}/find`, {
-      method: 'POST', body: JSON.stringify({ name: $('#find-name').value })
+      method: 'POST', body: JSON.stringify({ name: state.lastLookupName })
     });
     renderMatches(result.attendees);
+    $('#find-success').textContent = 'Registration found. Review your details below.';
+    $('#find-success').hidden = false;
   } catch (error) {
     $('#find-error').textContent = error.message;
     $('#register-prompt').hidden = error.status !== 404;
   } finally {
+    $('#find-name').value = '';
     button.disabled = false;
   }
 });
 
 $('#show-register-button').addEventListener('click', () => {
+  $('#find-error').textContent = '';
+  $('#find-success').textContent = '';
+  $('#find-success').hidden = true;
   $('#public-register-error').textContent = '';
   $('#public-register-form').reset();
-  $('#public-register-form [name="name"]').value = $('#find-name').value.trim();
+  $('#public-register-form [name="name"]').value = state.lastLookupName;
   $('#register-success').hidden = true;
   $('#find-form').hidden = true;
   $('#register-prompt').hidden = true;
@@ -445,6 +472,10 @@ $('#public-register-form').addEventListener('submit', async (event) => {
     });
     $('#public-register-panel').hidden = true;
     $('#find-form').hidden = false;
+    $('#find-error').textContent = '';
+    $('#find-success').textContent = '';
+    $('#find-success').hidden = true;
+    $('#register-prompt').hidden = true;
     $('#find-name').value = result.attendee.name;
     $('#register-success').hidden = false;
     $('#find-name').focus();
