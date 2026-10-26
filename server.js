@@ -22,12 +22,21 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 const dashboardClients = new Map();
 let db;
 
+const pendingDashboardUpdates = new Set();
+
+// Each update makes every open dashboard reload the full guest list, so a burst of
+// check-ins at the door is coalesced into at most one update per second per admin.
 function notifyDashboard(adminId) {
-  const clients = dashboardClients.get(adminId);
-  if (!clients) return;
-  for (const response of clients) {
-    if (!response.writableEnded) response.write('event: dashboard-update\ndata: {}\n\n');
-  }
+  if (pendingDashboardUpdates.has(adminId)) return;
+  pendingDashboardUpdates.add(adminId);
+  setTimeout(() => {
+    pendingDashboardUpdates.delete(adminId);
+    const clients = dashboardClients.get(adminId);
+    if (!clients) return;
+    for (const response of clients) {
+      if (!response.writableEnded) response.write('event: dashboard-update\ndata: {}\n\n');
+    }
+  }, 1000).unref();
 }
 
 if (!sessionSecret || sessionSecret.length < 32 || sessionSecret === 'replace-this-with-a-long-random-secret') {
@@ -78,10 +87,10 @@ const authLimit = rateLimit({
   windowMs: 15 * 60 * 1000, limit: 20, skipSuccessfulRequests: true, standardHeaders: 'draft-7', legacyHeaders: false,
   message: { error: 'Too many failed sign-in attempts. Please wait 15 minutes and try again.' }
 });
-// Guests on venue Wi-Fi share one public IP, so this allows a busy entrance (about 100 guests a minute)
-// while still slowing automated name guessing.
+// Guests on venue Wi-Fi or carrier NAT share one public IP, and a guest can need 2-5 requests
+// (search, retry, register, check in), so this allows a crowded entrance while still slowing automated name guessing.
 const lookupLimit = rateLimit({
-  windowMs: 60 * 1000, limit: 300, standardHeaders: 'draft-7', legacyHeaders: false,
+  windowMs: 60 * 1000, limit: 1000, standardHeaders: 'draft-7', legacyHeaders: false,
   message: { error: 'The check-in desk is very busy. Please wait a minute and try again.' }
 });
 
