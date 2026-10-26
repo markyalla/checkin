@@ -455,6 +455,10 @@ async function start() {
       await db.close();
       process.exit(0);
     });
+    // Keep-alive sockets (from Caddy or a closed dashboard stream) would otherwise hold close() open
+    // until systemd kills the process mid-write; give in-flight requests a moment, then drop the rest.
+    server.closeIdleConnections();
+    setTimeout(() => server.closeAllConnections(), 3000).unref();
   };
   process.once('SIGINT', shutdown);
   process.once('SIGTERM', shutdown);
