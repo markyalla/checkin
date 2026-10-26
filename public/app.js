@@ -1,4 +1,4 @@
-const state = { admin: null, attendees: [], authMode: 'login', editingId: null, checkinToken: null, lastLookupName: '', dashboardStream: null };
+const state = { admin: null, attendees: [], today: null, selectedDay: null, authMode: 'login', editingId: null, checkinToken: null, lastLookupName: '', dashboardStream: null };
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
@@ -39,6 +39,24 @@ function formatDate(value, includeDate = false) {
   return new Intl.DateTimeFormat(undefined, includeDate
     ? { dateStyle: 'medium', timeStyle: 'short' }
     : { hour: 'numeric', minute: '2-digit' }).format(date);
+}
+
+// Days are 'YYYY-MM-DD' strings in the event's time zone; noon avoids shifting the date across local midnight.
+function formatDay(day, long = false) {
+  const label = new Intl.DateTimeFormat(undefined, long
+    ? { weekday: 'long', day: 'numeric', month: 'long' }
+    : { weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(`${day}T12:00:00`));
+  return day === state.today ? `Today · ${label}` : label;
+}
+
+function checkinOn(attendee, day) {
+  return attendee.checkins.find((checkin) => checkin.date === day)?.checkedInAt || null;
+}
+
+function checkinDays() {
+  const days = new Set([state.today]);
+  state.attendees.forEach((attendee) => attendee.checkins.forEach((checkin) => days.add(checkin.date)));
+  return [...days].sort().reverse();
 }
 
 function showAuth() {
@@ -114,9 +132,47 @@ function createGuestCell(attendee) {
   return cell;
 }
 
+function renderDayOptions(days) {
+  const select = $('#day-select');
+  select.replaceChildren(...days.map((day) => {
+    const option = element('option', '', formatDay(day));
+    option.value = day;
+    return option;
+  }));
+  select.value = state.selectedDay;
+  $$('.selected-day-label').forEach((node) => { node.textContent = state.selectedDay === state.today ? 'today' : formatDay(state.selectedDay); });
+}
+
+function renderDailyBreakdown(days) {
+  const body = $('#daily-table-body');
+  body.replaceChildren();
+  const registered = state.attendees.length;
+  days.forEach((day) => {
+    const count = state.attendees.filter((attendee) => checkinOn(attendee, day)).length;
+    const row = document.createElement('tr');
+    row.classList.toggle('selected-row', day === state.selectedDay);
+    row.append(element('td', '', formatDay(day, true)));
+    row.append(element('td', '', String(count)));
+    row.append(element('td', '', `${registered ? Math.round((count / registered) * 100) : 0}%`));
+    const actions = element('td');
+    const view = element('button', 'small-action', day === state.selectedDay ? 'Viewing' : 'View');
+    view.type = 'button';
+    view.dataset.day = day;
+    view.disabled = day === state.selectedDay;
+    actions.append(view);
+    row.append(actions);
+    body.append(row);
+  });
+}
+
 function renderDashboard() {
   const attendees = state.attendees;
-  const arrived = attendees.filter((attendee) => attendee.attended_at);
+  const days = checkinDays();
+  if (!days.includes(state.selectedDay)) state.selectedDay = state.today;
+  renderDayOptions(days);
+  renderDailyBreakdown(days);
+  const day = state.selectedDay;
+  const arrived = attendees.filter((attendee) => checkinOn(attendee, day));
   const percent = attendees.length ? Math.round((arrived.length / attendees.length) * 100) : 0;
   $('#registered-count').textContent = attendees.length;
   $('#attended-count').textContent = arrived.length;
@@ -127,14 +183,14 @@ function renderDashboard() {
   recentBody.replaceChildren();
   $('#recent-empty').hidden = arrived.length > 0;
   $('#recent-table-body').closest('.table-wrap').querySelector('table').hidden = arrived.length === 0;
-  arrived.slice().sort((a, b) => new Date(b.attended_at) - new Date(a.attended_at)).slice(0, 6).forEach((attendee) => {
+  arrived.slice().sort((a, b) => new Date(checkinOn(b, day)) - new Date(checkinOn(a, day))).slice(0, 6).forEach((attendee) => {
     const row = document.createElement('tr');
     row.append(createGuestCell(attendee));
     row.append(element('td', '', attendee.company || '—'));
     row.append(element('td', '', attendee.profession || '—'));
-    row.append(element('td', '', formatDate(attendee.attended_at, true)));
+    row.append(element('td', '', formatDate(checkinOn(attendee, day))));
     const status = document.createElement('td');
-    status.append(createStatus(attendee.attended_at));
+    status.append(createStatus(checkinOn(attendee, day)));
     row.append(status);
     recentBody.append(row);
   });
@@ -144,10 +200,11 @@ function renderDashboard() {
 function renderGuestList() {
   const query = $('#guest-search').value.trim().toLowerCase();
   const filter = $('#attendance-filter').value;
+  const day = state.selectedDay;
   const matching = state.attendees.filter((attendee) => {
     const searchable = [attendee.name, attendee.email, attendee.phone, attendee.company, attendee.profession].join(' ').toLowerCase();
     const matchesQuery = !query || searchable.includes(query);
-    const matchesFilter = filter === 'all' || (filter === 'attended' ? Boolean(attendee.attended_at) : !attendee.attended_at);
+    const matchesFilter = filter === 'all' || (filter === 'attended' ? Boolean(checkinOn(attendee, day)) : !checkinOn(attendee, day));
     return matchesQuery && matchesFilter;
   });
   const body = $('#guest-table-body');
@@ -159,8 +216,10 @@ function renderGuestList() {
     row.append(element('td', '', attendee.company || '—'));
     row.append(element('td', '', attendee.profession || '—'));
     const arrival = document.createElement('td');
-    arrival.append(attendee.attended_at ? element('span', 'status-pill', formatDate(attendee.attended_at, true)) : createStatus(null));
+    const arrivedAt = checkinOn(attendee, day);
+    arrival.append(arrivedAt ? element('span', 'status-pill', formatDate(arrivedAt)) : createStatus(null));
     row.append(arrival);
+    row.append(element('td', '', attendee.checkins.map((checkin) => formatDay(checkin.date)).join(', ') || '—'));
     const actions = element('td');
     const actionWrap = element('div', 'row-actions');
     const edit = element('button', 'small-action', 'Edit');
@@ -201,6 +260,9 @@ async function refreshDashboard() {
   state.admin = session.admin;
   if (!state.admin) return showAuth();
   state.attendees = dashboard.attendees;
+  // Follow the calendar when the admin is watching "today" and midnight passes.
+  if (!state.selectedDay || state.selectedDay === state.today) state.selectedDay = dashboard.today;
+  state.today = dashboard.today;
   $('#admin-name').textContent = state.admin.name;
   $('#admin-email').textContent = state.admin.email;
   $('#admin-avatar').textContent = state.admin.name.trim().charAt(0).toUpperCase() || 'A';
@@ -254,12 +316,12 @@ function renderMatches(attendees) {
   attendees.forEach((attendee) => {
     const card = element('article', 'match-card');
     card.append(element('h2', '', attendee.name), attendeeDetails(attendee));
-    if (attendee.attended_at) {
-      const status = element('p', 'checked-banner', `Check-in successful · ${formatDate(attendee.attended_at, true)}`);
+    if (attendee.checked_in_today) {
+      const status = element('p', 'checked-banner', `Checked in for today · ${formatDate(attendee.checked_in_today)}`);
       status.setAttribute('role', 'status');
       card.append(status);
     } else {
-      const button = element('button', 'button button-primary button-wide', 'Check in');
+      const button = element('button', 'button button-primary button-wide', 'Check in for today');
       button.type = 'button';
       button.dataset.attendId = attendee.id;
       card.append(button);
@@ -327,6 +389,16 @@ $('#add-attendee-top').addEventListener('click', () => openAttendeeDialog());
 $('#add-attendee-list').addEventListener('click', () => openAttendeeDialog());
 $('#guest-search').addEventListener('input', renderGuestList);
 $('#attendance-filter').addEventListener('change', renderGuestList);
+$('#day-select').addEventListener('change', (event) => {
+  state.selectedDay = event.target.value;
+  renderDashboard();
+});
+$('#daily-table-body').addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-day]');
+  if (!button) return;
+  state.selectedDay = button.dataset.day;
+  renderDashboard();
+});
 
 $('#guest-table-body').addEventListener('click', async (event) => {
   const button = event.target.closest('button[data-action]');
@@ -337,8 +409,7 @@ $('#guest-table-body').addEventListener('click', async (event) => {
   if (!window.confirm(`Remove ${attendee.name} from this guest list?`)) return;
   try {
     await api(`/api/attendees/${attendee.id}`, { method: 'DELETE' });
-    state.attendees = state.attendees.filter((item) => item.id !== attendee.id);
-    renderDashboard();
+    await refreshDashboard();
     toast('Guest removed from your list.');
   } catch (error) {
     toast(error.message, true);
@@ -353,13 +424,11 @@ $('#attendee-form').addEventListener('submit', async (event) => {
   $('#attendee-error').textContent = '';
   try {
     const editing = Boolean(state.editingId);
-    const result = await api(editing ? `/api/attendees/${state.editingId}` : '/api/attendees', {
+    await api(editing ? `/api/attendees/${state.editingId}` : '/api/attendees', {
       method: editing ? 'PUT' : 'POST', body: JSON.stringify(payload)
     });
-    if (editing) state.attendees = state.attendees.map((item) => item.id === state.editingId ? result.attendee : item);
-    else state.attendees.unshift(result.attendee);
     $('#attendee-dialog').close();
-    renderDashboard();
+    await refreshDashboard();
     toast(editing ? 'Guest details updated.' : 'Guest added to your list.');
   } catch (error) {
     $('#attendee-error').textContent = error.message;
@@ -497,7 +566,7 @@ $('#match-list').addEventListener('click', async (event) => {
     const cards = [...$('#match-list').children];
     const card = cards.find((item) => item.querySelector('[data-attend-id]')?.dataset.attendId === button.dataset.attendId);
     if (card) renderMatches([result.attendee]);
-    toast('Check-in successful. Welcome!');
+    toast(result.alreadyCheckedIn ? 'You have already checked in today.' : 'Check-in successful. Welcome!');
   } catch (error) {
     button.disabled = false;
     toast(error.message, true);

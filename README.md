@@ -7,8 +7,9 @@ A Node.js check-in app with an embedded PostgreSQL-compatible database. There is
 1. The administrator registers and signs in, then adds attendees with full name, email, phone, and organisation. Profession and other details are optional.
 2. The administrator prints the event's entrance QR code.
 3. A guest scans it and lands on **Welcome to Agile in Africa 2026**.
-4. The guest enters their registered name, reviews the matching saved details, and selects **I'm here · Check in**. If no registration matches, they can choose **Register here**, complete the same attendee fields, then search their name and check in.
-5. The app saves the check-in timestamp. The admin overview and guest list show the arrival.
+4. The guest enters their registered name, reviews the matching saved details, and selects **Check in for today**. If no registration matches, they can choose **Register here**, complete the same attendee fields, then search their name and check in.
+5. The app saves one check-in per guest per day. A second scan on the same day keeps the first arrival time; the guest can check in again on the next event day without registering again.
+6. The admin overview and guest list show arrivals for the day chosen in the top bar, and **Daily check-ins** breaks attendance down day by day.
 
 ## Run locally
 
@@ -24,6 +25,8 @@ Set a unique `SESSION_SECRET` in `.env` (at least 32 characters). Generate one w
 ```powershell
 node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))"
 ```
+
+Check-in days roll over at midnight in `EVENT_TIMEZONE` (default `Africa/Accra`); set it to an IANA time zone name if the event is elsewhere.
 
 For local testing, set `APP_URL=http://localhost:3000`, then run:
 
@@ -72,6 +75,58 @@ The app generates the QR for you; there is no terminal command or separate QR se
 Scan the QR with a phone before printing many copies. It should open the public Agile in Africa check-in page, not `localhost` or the droplet's IP address. If the URL is wrong, correct `APP_URL`, restart `checkin`, and refresh the QR page.
 
 Keep `/opt/checkin/data` on persistent droplet storage and include it in backups. Deploying new code should not delete this directory.
+
+### Deploy updates
+
+The droplet runs the code from a git clone in `/opt/checkin`. After changes are pushed to `main` on GitHub, SSH into the droplet and run:
+
+1. Back up the database. Stop the app first so the copy is consistent:
+
+	```sh
+	sudo systemctl stop checkin
+	sudo cp -a /opt/checkin/data "/opt/checkin-data-backup-$(date +%Y%m%d-%H%M)"
+	```
+
+2. Pull the new code:
+
+	```sh
+	cd /opt/checkin
+	git pull origin main
+	```
+
+3. Install dependencies only if `package.json` or `package-lock.json` changed in the pull:
+
+	```sh
+	npm ci --omit=dev
+	```
+
+4. Start the app and confirm it is running:
+
+	```sh
+	sudo systemctl start checkin
+	sudo systemctl status checkin --no-pager
+	sudo journalctl -u checkin -n 30 --no-pager
+	```
+
+	The log should end with `Gather is running at http://localhost:3000`. Database changes (such as new tables) apply automatically on start.
+
+5. Open the site, sign in, and check the overview loads. The entrance QR does not change between deploys, so printed signs keep working.
+
+If the app fails to start, the log in step 4 says why. To roll back, run `git log --oneline -5`, then `git checkout <previous-commit>`, stop the app, restore the backup over `/opt/checkin/data`, and start it again.
+
+If `/opt/checkin` was first set up by copying files rather than cloning, `git pull` will report it is not a git repository. Convert it once, keeping `data/` in place:
+
+```sh
+cd /opt/checkin
+git init
+git remote add origin https://github.com/markyalla/checkin.git
+git fetch origin
+git reset --hard origin/main
+git branch -M main
+git branch --set-upstream-to=origin/main
+```
+
+`data/` and `.env` are in `.gitignore`, so git never overwrites or deletes them.
 
 ## Privacy note
 

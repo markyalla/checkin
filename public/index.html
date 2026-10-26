@@ -65,7 +65,7 @@
     <main class="dashboard-main">
       <header class="topbar">
         <div class="breadcrumb"><span>Workspace</span><span class="crumb-slash">/</span><strong id="topbar-event-name">Your event</strong></div>
-        <div class="topbar-actions"><span class="live-indicator"><i></i>Live event</span><button class="button button-primary button-small" id="add-attendee-top">＋ <span>Add guest</span></button></div>
+        <div class="topbar-actions"><span class="live-indicator"><i></i>Live event</span><label class="filter-label day-picker"><span class="sr-only">Check-in day</span><select id="day-select" aria-label="Check-in day"></select></label><button class="button button-primary button-small" id="add-attendee-top">＋ <span>Add guest</span></button></div>
       </header>
       <div class="dashboard-content">
         <section class="view-panel active" id="view-overview">
@@ -75,21 +75,25 @@
           </div>
           <div class="metric-grid">
             <article class="metric-card metric-registered"><div class="metric-top"><span>Registered guests</span><span class="metric-symbol">01</span></div><strong id="registered-count">0</strong><small>Total on your guest list</small></article>
-            <article class="metric-card metric-arrived"><div class="metric-top"><span>Arrived</span><span class="metric-symbol">02</span></div><strong id="attended-count">0</strong><small>Checked in at the entrance</small></article>
-            <article class="metric-card metric-rate"><div class="metric-top"><span>Attendance rate</span><span class="metric-symbol">03</span></div><strong id="attendance-rate">0<span class="metric-percent">%</span></strong><small>Of all registered guests</small></article>
+            <article class="metric-card metric-arrived"><div class="metric-top"><span>Arrived</span><span class="metric-symbol">02</span></div><strong id="attended-count">0</strong><small>Checked in on <span class="selected-day-label">today</span></small></article>
+            <article class="metric-card metric-rate"><div class="metric-top"><span>Attendance rate</span><span class="metric-symbol">03</span></div><strong id="attendance-rate">0<span class="metric-percent">%</span></strong><small>Of all registered guests, <span class="selected-day-label">today</span></small></article>
           </div>
           <section class="content-section overview-table-section">
-            <div class="section-heading"><div><p class="eyebrow">THE DOOR</p><h2>Recent arrivals</h2></div><button class="text-button" data-open-view="attendees">Full guest list <span aria-hidden="true">→</span></button></div>
-            <div class="table-wrap"><table><thead><tr><th>GUEST</th><th>COMPANY</th><th>PROFESSION</th><th>ARRIVAL TIME</th><th>STATUS</th></tr></thead><tbody id="recent-table-body"></tbody></table><div class="empty-state" id="recent-empty">No arrivals just yet. Your guests will appear here when they check in.</div></div>
+            <div class="section-heading"><div><p class="eyebrow">THE DOOR</p><h2>Recent arrivals · <span class="selected-day-label">today</span></h2></div><button class="text-button" data-open-view="attendees">Full guest list <span aria-hidden="true">→</span></button></div>
+            <div class="table-wrap"><table><thead><tr><th>GUEST</th><th>COMPANY</th><th>PROFESSION</th><th>ARRIVAL TIME</th><th>STATUS</th></tr></thead><tbody id="recent-table-body"></tbody></table><div class="empty-state" id="recent-empty">No arrivals for this day yet. Your guests will appear here when they check in.</div></div>
+          </section>
+          <section class="content-section">
+            <div class="section-heading"><div><p class="eyebrow">DAY BY DAY</p><h2>Daily check-ins</h2></div></div>
+            <div class="table-wrap"><table><thead><tr><th>DAY</th><th>ARRIVED</th><th>ATTENDANCE RATE</th><th></th></tr></thead><tbody id="daily-table-body"></tbody></table></div>
           </section>
           <section class="event-strip"><img class="strip-mark" src="/aia-logo.svg" alt=""><div><p class="eyebrow">YOUR ENTRANCE IS READY</p><h3>Make check-in easy.</h3><p>Print your entrance QR and place it where every guest can see it.</p></div><button class="button button-dark" data-open-view="qr">View entrance QR <span aria-hidden="true">→</span></button></section>
         </section>
 
         <section class="view-panel" id="view-attendees">
-          <div class="page-heading list-heading"><div><p class="eyebrow">YOUR PEOPLE</p><h1>Guest list</h1><p class="page-subtitle"><span id="list-count">0</span> registered for <span id="list-event-name">your event</span>.</p></div><button class="button button-primary" id="add-attendee-list">＋ Add guest</button></div>
+          <div class="page-heading list-heading"><div><p class="eyebrow">YOUR PEOPLE</p><h1>Guest list</h1><p class="page-subtitle"><span id="list-count">0</span> registered for <span id="list-event-name">your event</span>. Showing check-ins for <span class="selected-day-label">today</span>.</p></div><button class="button button-primary" id="add-attendee-list">＋ Add guest</button></div>
           <section class="content-section guest-list-section">
-            <div class="list-toolbar"><label class="search-field"><span aria-hidden="true">⌕</span><input id="guest-search" type="search" placeholder="Search name, company, email…" aria-label="Search guest list"></label><label class="filter-label"><span class="sr-only">Filter attendance</span><select id="attendance-filter"><option value="all">Everyone</option><option value="attended">Arrived</option><option value="pending">Not arrived</option></select></label></div>
-            <div class="table-wrap"><table><thead><tr><th>GUEST</th><th>CONTACT</th><th>COMPANY</th><th>PROFESSION</th><th>ARRIVAL</th><th></th></tr></thead><tbody id="guest-table-body"></tbody></table><div class="empty-state" id="guest-empty">Your guest list is waiting. Add your first guest to get started.</div><div class="empty-state" id="search-empty" hidden>No guests match that search.</div></div>
+            <div class="list-toolbar"><label class="search-field"><span aria-hidden="true">⌕</span><input id="guest-search" type="search" placeholder="Search name, company, email…" aria-label="Search guest list"></label><label class="filter-label"><span class="sr-only">Filter attendance</span><select id="attendance-filter"><option value="all">Everyone</option><option value="attended">Arrived this day</option><option value="pending">Not arrived this day</option></select></label></div>
+            <div class="table-wrap"><table><thead><tr><th>GUEST</th><th>CONTACT</th><th>COMPANY</th><th>PROFESSION</th><th>ARRIVAL</th><th>DAYS ATTENDED</th><th></th></tr></thead><tbody id="guest-table-body"></tbody></table><div class="empty-state" id="guest-empty">Your guest list is waiting. Add your first guest to get started.</div><div class="empty-state" id="search-empty" hidden>No guests match that search.</div></div>
           </section>
         </section>
 

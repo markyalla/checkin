@@ -16,6 +16,9 @@ const port = Number(process.env.PORT || 3000);
 const databasePath = process.env.DATABASE_PATH || path.join(__dirname, 'data', 'attendance');
 const sessionSecret = process.env.SESSION_SECRET;
 const defaultEventName = 'Agile in Africa 2026';
+// Check-in days roll over at midnight in the event's local time, not the server's.
+const eventTimeZone = process.env.EVENT_TIMEZONE || 'Africa/Accra';
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const dashboardClients = new Map();
 let db;
 
@@ -169,11 +172,20 @@ app.post('/api/auth/logout', requireAdmin, (req, res) => {
 
 app.get('/api/dashboard', requireAdmin, async (req, res, next) => {
   try {
-    const [summary, attendees] = await Promise.all([
-      db.query('SELECT count(*)::int AS registered, count(*) FILTER (WHERE attended_at IS NOT NULL)::int AS attended FROM attendees WHERE admin_id = $1', [req.session.adminId]),
-      db.query('SELECT id, name, phone, email, company, profession, notes, attended_at, created_at FROM attendees WHERE admin_id = $1 ORDER BY created_at DESC', [req.session.adminId])
+    const [today, attendees] = await Promise.all([
+      db.query(`SELECT to_char((now() AT TIME ZONE $1)::date, 'YYYY-MM-DD') AS today`, [eventTimeZone]),
+      db.query(
+        `SELECT a.id, a.name, a.phone, a.email, a.company, a.profession, a.notes, a.created_at,
+           COALESCE(json_agg(json_build_object('date', to_char(c.checkin_date, 'YYYY-MM-DD'), 'checkedInAt', c.checked_in_at)
+             ORDER BY c.checkin_date) FILTER (WHERE c.id IS NOT NULL), '[]') AS checkins
+         FROM attendees a LEFT JOIN checkins c ON c.attendee_id = a.id
+         WHERE a.admin_id = $1
+         GROUP BY a.id
+         ORDER BY a.created_at DESC`,
+        [req.session.adminId]
+      )
     ]);
-    res.json({ summary: summary.rows[0], attendees: attendees.rows });
+    res.json({ today: today.rows[0].today, attendees: attendees.rows });
   } catch (error) {
     next(error);
   }
@@ -229,7 +241,7 @@ app.post('/api/attendees', requireAdmin, async (req, res, next) => {
   if (error) return res.status(400).json({ error });
   try {
     const result = await db.query(
-      'INSERT INTO attendees (admin_id, name, phone, email, company, profession, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, admin_id, name, phone, email, company, profession, notes, attended_at, created_at',
+      'INSERT INTO attendees (admin_id, name, phone, email, company, profession, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, admin_id, name, phone, email, company, profession, notes, created_at',
       [req.session.adminId, fields.name, fields.phone, fields.email, fields.company, fields.profession, fields.notes]
     );
     notifyDashboard(req.session.adminId);
@@ -242,9 +254,10 @@ app.post('/api/attendees', requireAdmin, async (req, res, next) => {
 app.put('/api/attendees/:id', requireAdmin, async (req, res, next) => {
   const { fields, error } = attendeeFields(req.body);
   if (error) return res.status(400).json({ error });
+  if (!uuidPattern.test(req.params.id)) return res.status(404).json({ error: 'Attendee not found.' });
   try {
     const result = await db.query(
-      'UPDATE attendees SET name = $1, phone = $2, email = $3, company = $4, profession = $5, notes = $6 WHERE id = $7 AND admin_id = $8 RETURNING id, admin_id, name, phone, email, company, profession, notes, attended_at, created_at',
+      'UPDATE attendees SET name = $1, phone = $2, email = $3, company = $4, profession = $5, notes = $6 WHERE id = $7 AND admin_id = $8 RETURNING id, admin_id, name, phone, email, company, profession, notes, created_at',
       [fields.name, fields.phone, fields.email, fields.company, fields.profession, fields.notes, req.params.id, req.session.adminId]
     );
     if (!result.rowCount) return res.status(404).json({ error: 'Attendee not found.' });
@@ -256,6 +269,7 @@ app.put('/api/attendees/:id', requireAdmin, async (req, res, next) => {
 });
 
 app.delete('/api/attendees/:id', requireAdmin, async (req, res, next) => {
+  if (!uuidPattern.test(req.params.id)) return res.status(404).json({ error: 'Attendee not found.' });
   try {
     const result = await db.query('DELETE FROM attendees WHERE id = $1 AND admin_id = $2', [req.params.id, req.session.adminId]);
     if (!result.rowCount) return res.status(404).json({ error: 'Attendee not found.' });
@@ -298,11 +312,12 @@ app.post('/api/public/:token/find', lookupLimit, async (req, res, next) => {
   if (!name) return res.status(400).json({ error: 'Enter your full name.' });
   try {
     const result = await db.query(
-      `SELECT a.id, a.name, a.phone, a.email, a.company, a.profession, a.notes, a.attended_at
+      `SELECT a.id, a.name, a.phone, a.email, a.company, a.profession, a.notes, c.checked_in_at AS checked_in_today
        FROM attendees a JOIN admins d ON d.id = a.admin_id
+       LEFT JOIN checkins c ON c.attendee_id = a.id AND c.checkin_date = (now() AT TIME ZONE $3)::date
        WHERE d.public_token = $1 AND lower(a.name) = lower($2)
        ORDER BY a.created_at`,
-      [req.params.token, name]
+      [req.params.token, name, eventTimeZone]
     );
     if (!result.rowCount) return res.status(404).json({ error: 'No registration found with that exact name. Check the spelling or ask the event team for help.' });
     res.json({ attendees: result.rows });
@@ -313,22 +328,34 @@ app.post('/api/public/:token/find', lookupLimit, async (req, res, next) => {
 
 app.post('/api/public/:token/attend', lookupLimit, async (req, res, next) => {
   const attendeeId = text(req.body.attendeeId, 40);
+  if (!uuidPattern.test(attendeeId)) return res.status(404).json({ error: 'Registration not found. Search your name again.' });
   try {
-    const result = await db.transaction((tx) => tx.query(
-      `UPDATE attendees a SET attended_at = COALESCE(a.attended_at, now())
-       FROM admins d WHERE a.admin_id = d.id AND d.public_token = $1 AND a.id = $2
-      RETURNING a.id, a.name, a.phone, a.email, a.company, a.profession, a.notes, a.attended_at`,
+    const attendee = await db.query(
+      `SELECT a.id, a.admin_id, a.name, a.phone, a.email, a.company, a.profession, a.notes
+       FROM attendees a JOIN admins d ON d.id = a.admin_id
+       WHERE d.public_token = $1 AND a.id = $2`,
       [req.params.token, attendeeId]
-    ));
-    if (!result.rowCount) {
+    );
+    if (!attendee.rowCount) {
       return res.status(404).json({ error: 'Registration not found. Search your name again.' });
     }
-    const admin = await db.query(
-      'SELECT admin_id FROM attendees WHERE id = $1',
-      [attendeeId]
+    const { admin_id: adminId, ...details } = attendee.rows[0];
+    // The unique (attendee, day) constraint makes a repeat scan on the same day a no-op.
+    const inserted = await db.query(
+      `INSERT INTO checkins (attendee_id, admin_id, checkin_date) VALUES ($1, $2, (now() AT TIME ZONE $3)::date)
+       ON CONFLICT (attendee_id, checkin_date) DO NOTHING
+       RETURNING checked_in_at`,
+      [attendeeId, adminId, eventTimeZone]
     );
-    if (admin.rowCount) notifyDashboard(admin.rows[0].admin_id);
-    res.json({ attendee: result.rows[0] });
+    const alreadyCheckedIn = !inserted.rowCount;
+    const checkin = alreadyCheckedIn
+      ? await db.query(
+        'SELECT checked_in_at FROM checkins WHERE attendee_id = $1 AND checkin_date = (now() AT TIME ZONE $2)::date',
+        [attendeeId, eventTimeZone]
+      )
+      : inserted;
+    if (!alreadyCheckedIn) notifyDashboard(adminId);
+    res.json({ attendee: { ...details, checked_in_today: checkin.rows[0].checked_in_at }, alreadyCheckedIn });
   } catch (error) {
     next(error);
   }
@@ -370,6 +397,15 @@ async function start() {
       created_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS attendees_admin_created_idx ON attendees (admin_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS checkins (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      attendee_id uuid NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
+      admin_id uuid NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+      checkin_date date NOT NULL,
+      checked_in_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (attendee_id, checkin_date)
+    );
+    CREATE INDEX IF NOT EXISTS checkins_admin_date_idx ON checkins (admin_id, checkin_date);
     CREATE TABLE IF NOT EXISTS app_sessions (
       sid text PRIMARY KEY,
       sess jsonb NOT NULL,
@@ -377,6 +413,19 @@ async function start() {
     );
     CREATE INDEX IF NOT EXISTS app_sessions_expire_idx ON app_sessions (expire);
   `);
+  await db.query('SELECT now() AT TIME ZONE $1', [eventTimeZone]).catch(() => {
+    throw new Error(`EVENT_TIMEZONE "${eventTimeZone}" is not a recognised time zone.`);
+  });
+  // One-time move of single check-ins (attendees.attended_at) into the per-day checkins table.
+  await db.transaction(async (tx) => {
+    await tx.query(
+      `INSERT INTO checkins (attendee_id, admin_id, checkin_date, checked_in_at)
+       SELECT id, admin_id, (attended_at AT TIME ZONE $1)::date, attended_at FROM attendees WHERE attended_at IS NOT NULL
+       ON CONFLICT (attendee_id, checkin_date) DO NOTHING`,
+      [eventTimeZone]
+    );
+    await tx.query('UPDATE attendees SET attended_at = NULL WHERE attended_at IS NOT NULL');
+  });
   setInterval(() => db.query('DELETE FROM app_sessions WHERE expire <= now()').catch(console.error), 60 * 60 * 1000).unref();
   const server = app.listen(port, () => console.log(`Gather is running at http://localhost:${port}`));
   const shutdown = () => {
