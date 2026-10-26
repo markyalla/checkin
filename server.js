@@ -73,8 +73,17 @@ app.use(session({
   }
 }));
 
-const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false });
-const lookupLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false });
+// Only failed sign-ins count, so several staff can sign in from the same venue network.
+const authLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, limit: 20, skipSuccessfulRequests: true, standardHeaders: 'draft-7', legacyHeaders: false,
+  message: { error: 'Too many failed sign-in attempts. Please wait 15 minutes and try again.' }
+});
+// Guests on venue Wi-Fi share one public IP, so this allows a busy entrance (about 100 guests a minute)
+// while still slowing automated name guessing.
+const lookupLimit = rateLimit({
+  windowMs: 60 * 1000, limit: 300, standardHeaders: 'draft-7', legacyHeaders: false,
+  message: { error: 'The check-in desk is very busy. Please wait a minute and try again.' }
+});
 
 function requireAdmin(req, res, next) {
   if (!req.session.adminId) return res.status(401).json({ error: 'Please sign in to continue.' });
