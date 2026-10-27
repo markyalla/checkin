@@ -1,4 +1,4 @@
-const state = { admin: null, attendees: [], today: null, selectedDay: null, authMode: 'login', editingId: null, checkinToken: null, lastLookupName: '', dashboardStream: null };
+const state = { admin: null, attendees: [], today: null, selectedDay: null, deskAttendee: null, authMode: 'login', editingId: null, checkinToken: null, lastLookupName: '', dashboardStream: null };
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
@@ -117,6 +117,7 @@ function openView(view) {
   $$('.view-panel').forEach((panel) => panel.classList.toggle('active', panel.id === `view-${view}`));
   $$('.nav-link').forEach((button) => button.classList.toggle('active', button.dataset.view === view));
   if (view === 'qr') loadQr();
+  if (view === 'desk') $('#desk-code').focus();
 }
 
 function createStatus(attendedAt) {
@@ -202,7 +203,7 @@ function renderGuestList() {
   const filter = $('#attendance-filter').value;
   const day = state.selectedDay;
   const matching = state.attendees.filter((attendee) => {
-    const searchable = [attendee.name, attendee.email, attendee.phone, attendee.company, attendee.profession].join(' ').toLowerCase();
+    const searchable = [attendee.name, attendee.code, attendee.email, attendee.phone, attendee.company, attendee.profession].join(' ').toLowerCase();
     const matchesQuery = !query || searchable.includes(query);
     const matchesFilter = filter === 'all' || (filter === 'attended' ? Boolean(checkinOn(attendee, day)) : !checkinOn(attendee, day));
     return matchesQuery && matchesFilter;
@@ -212,6 +213,7 @@ function renderGuestList() {
   matching.forEach((attendee) => {
     const row = document.createElement('tr');
     row.append(createGuestCell(attendee));
+    row.append(element('td', 'checkin-code', attendee.code || '—'));
     row.append(element('td', '', [attendee.email, attendee.phone].filter(Boolean).join(' · ') || '—'));
     row.append(element('td', '', attendee.company || '—'));
     row.append(element('td', '', attendee.profession || '—'));
@@ -298,7 +300,7 @@ async function loadQr() {
 function attendeeDetails(attendee) {
   const details = element('dl', 'match-details');
   const rows = [
-    ['Phone', attendee.phone], ['Email', attendee.email], ['Company', attendee.company],
+    ['Check-in code', attendee.code], ['Phone', attendee.phone], ['Email', attendee.email], ['Company', attendee.company],
     ['Profession', attendee.profession], ['Other details', attendee.notes]
   ].filter(([, value]) => value);
   rows.forEach(([label, value]) => {
@@ -308,6 +310,23 @@ function attendeeDetails(attendee) {
   });
   if (!rows.length) details.append(element('div', '', 'No additional details on this registration.'));
   return details;
+}
+
+function renderDeskResult(attendee) {
+  const card = element('article', 'match-card');
+  card.append(element('h2', '', attendee.name), attendeeDetails(attendee));
+  if (attendee.checked_in_today) {
+    const status = element('p', 'checked-banner', `Checked in for today · ${formatDate(attendee.checked_in_today)}`);
+    status.setAttribute('role', 'status');
+    card.append(status);
+  } else {
+    const button = element('button', 'button button-primary button-wide', 'Check in for today');
+    button.type = 'button';
+    button.dataset.deskCheckin = attendee.id;
+    card.append(button);
+  }
+  $('#desk-result').replaceChildren(card);
+  state.deskAttendee = attendee;
 }
 
 function renderMatches(attendees) {
@@ -472,6 +491,41 @@ $('#signout-button').addEventListener('click', async () => {
   }
 });
 
+$('#desk-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const code = $('#desk-code').value.replace(/\s+/g, '');
+  const button = $('#desk-find-button');
+  $('#desk-error').textContent = '';
+  $('#desk-result').replaceChildren();
+  button.disabled = true;
+  try {
+    const result = await api(`/api/attendees/code/${encodeURIComponent(code)}`);
+    renderDeskResult(result.attendee);
+    $('#desk-result [data-desk-checkin]')?.focus();
+  } catch (error) {
+    $('#desk-error').textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('#desk-result').addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-desk-checkin]');
+  if (!button) return;
+  button.disabled = true;
+  try {
+    const result = await api(`/api/attendees/${button.dataset.deskCheckin}/checkin`, { method: 'POST' });
+    renderDeskResult({ ...state.deskAttendee, checked_in_today: result.checkedInAt });
+    toast(result.alreadyCheckedIn ? `${state.deskAttendee.name} was already checked in today.` : `${state.deskAttendee.name} is checked in.`);
+    // Ready for the next guest in the queue.
+    $('#desk-code').value = '';
+    $('#desk-code').focus();
+  } catch (error) {
+    button.disabled = false;
+    toast(error.message, true);
+  }
+});
+
 $('#print-qr').addEventListener('click', () => window.print());
 $('#copy-qr-link').addEventListener('click', async () => {
   try {
@@ -546,6 +600,7 @@ $('#public-register-form').addEventListener('submit', async (event) => {
     $('#find-success').hidden = true;
     $('#register-prompt').hidden = true;
     $('#find-name').value = result.attendee.name;
+    $('#register-code').textContent = result.attendee.code;
     $('#register-success').hidden = false;
     $('#find-name').focus();
   } catch (error) {

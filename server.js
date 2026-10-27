@@ -121,6 +121,44 @@ function attendeeFields(body) {
   return { fields };
 }
 
+// Six digits are easy to read out at the desk and to type on any phone keypad.
+function newCheckinCode() {
+  return String(crypto.randomInt(100000, 1000000));
+}
+
+async function insertAttendee(adminId, fields, returning) {
+  // The only unique constraint a new attendee can hit is (admin_id, code), so a clash just means drawing another code.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await db.query(
+        `INSERT INTO attendees (admin_id, code, name, phone, email, company, profession, notes) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING ${returning}`,
+        [adminId, newCheckinCode(), fields.name, fields.phone, fields.email, fields.company, fields.profession, fields.notes]
+      );
+    } catch (error) {
+      if (error.code !== '23505' || attempt === 5) throw error;
+    }
+  }
+}
+
+async function checkInToday(attendeeId, adminId) {
+  // The unique (attendee, day) constraint makes a repeat check-in on the same day a no-op.
+  const inserted = await db.query(
+    `INSERT INTO checkins (attendee_id, admin_id, checkin_date) VALUES ($1, $2, (now() AT TIME ZONE $3)::date)
+     ON CONFLICT (attendee_id, checkin_date) DO NOTHING
+     RETURNING checked_in_at`,
+    [attendeeId, adminId, eventTimeZone]
+  );
+  if (inserted.rowCount) {
+    notifyDashboard(adminId);
+    return { checkedInAt: inserted.rows[0].checked_in_at, alreadyCheckedIn: false };
+  }
+  const existing = await db.query(
+    'SELECT checked_in_at FROM checkins WHERE attendee_id = $1 AND checkin_date = (now() AT TIME ZONE $2)::date',
+    [attendeeId, eventTimeZone]
+  );
+  return { checkedInAt: existing.rows[0].checked_in_at, alreadyCheckedIn: true };
+}
+
 function adminView(row) {
   return { id: row.id, name: row.name, email: row.email, eventName: row.event_name, publicToken: row.public_token };
 }
@@ -193,7 +231,7 @@ app.get('/api/dashboard', requireAdmin, async (req, res, next) => {
     const [today, attendees] = await Promise.all([
       db.query(`SELECT to_char((now() AT TIME ZONE $1)::date, 'YYYY-MM-DD') AS today`, [eventTimeZone]),
       db.query(
-        `SELECT a.id, a.name, a.phone, a.email, a.company, a.profession, a.notes, a.created_at,
+        `SELECT a.id, a.code, a.name, a.phone, a.email, a.company, a.profession, a.notes, a.created_at,
            COALESCE(json_agg(json_build_object('date', to_char(c.checkin_date, 'YYYY-MM-DD'), 'checkedInAt', c.checked_in_at)
              ORDER BY c.checkin_date) FILTER (WHERE c.id IS NOT NULL), '[]') AS checkins
          FROM attendees a LEFT JOIN checkins c ON c.attendee_id = a.id
@@ -258,10 +296,7 @@ app.post('/api/attendees', requireAdmin, async (req, res, next) => {
   const { fields, error } = attendeeFields(req.body);
   if (error) return res.status(400).json({ error });
   try {
-    const result = await db.query(
-      'INSERT INTO attendees (admin_id, name, phone, email, company, profession, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, admin_id, name, phone, email, company, profession, notes, created_at',
-      [req.session.adminId, fields.name, fields.phone, fields.email, fields.company, fields.profession, fields.notes]
-    );
+    const result = await insertAttendee(req.session.adminId, fields, 'id, admin_id, code, name, phone, email, company, profession, notes, created_at');
     notifyDashboard(req.session.adminId);
     res.status(201).json({ attendee: result.rows[0] });
   } catch (error) {
@@ -275,12 +310,42 @@ app.put('/api/attendees/:id', requireAdmin, async (req, res, next) => {
   if (!uuidPattern.test(req.params.id)) return res.status(404).json({ error: 'Attendee not found.' });
   try {
     const result = await db.query(
-      'UPDATE attendees SET name = $1, phone = $2, email = $3, company = $4, profession = $5, notes = $6 WHERE id = $7 AND admin_id = $8 RETURNING id, admin_id, name, phone, email, company, profession, notes, created_at',
+      'UPDATE attendees SET name = $1, phone = $2, email = $3, company = $4, profession = $5, notes = $6 WHERE id = $7 AND admin_id = $8 RETURNING id, admin_id, code, name, phone, email, company, profession, notes, created_at',
       [fields.name, fields.phone, fields.email, fields.company, fields.profession, fields.notes, req.params.id, req.session.adminId]
     );
     if (!result.rowCount) return res.status(404).json({ error: 'Attendee not found.' });
     notifyDashboard(req.session.adminId);
     res.json({ attendee: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/attendees/code/:code', requireAdmin, async (req, res, next) => {
+  const code = text(req.params.code, 20).replace(/\s+/g, '');
+  if (!/^\d{6}$/.test(code)) return res.status(400).json({ error: 'Check-in codes are 6 digits.' });
+  try {
+    const result = await db.query(
+      `SELECT a.id, a.code, a.name, a.phone, a.email, a.company, a.profession, a.notes, c.checked_in_at AS checked_in_today
+       FROM attendees a
+       LEFT JOIN checkins c ON c.attendee_id = a.id AND c.checkin_date = (now() AT TIME ZONE $3)::date
+       WHERE a.admin_id = $1 AND a.code = $2`,
+      [req.session.adminId, code, eventTimeZone]
+    );
+    if (!result.rowCount) return res.status(404).json({ error: `No guest has the code ${code}. Check the digits with the guest.` });
+    res.json({ attendee: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/attendees/:id/checkin', requireAdmin, async (req, res, next) => {
+  if (!uuidPattern.test(req.params.id)) return res.status(404).json({ error: 'Attendee not found.' });
+  try {
+    const owned = await db.query('SELECT id FROM attendees WHERE id = $1 AND admin_id = $2', [req.params.id, req.session.adminId]);
+    if (!owned.rowCount) return res.status(404).json({ error: 'Attendee not found.' });
+    const { checkedInAt, alreadyCheckedIn } = await checkInToday(req.params.id, req.session.adminId);
+    res.json({ checkedInAt, alreadyCheckedIn });
   } catch (error) {
     next(error);
   }
@@ -314,10 +379,7 @@ app.post('/api/public/:token/register', lookupLimit, async (req, res, next) => {
   try {
     const admin = await db.query('SELECT id FROM admins WHERE public_token = $1', [req.params.token]);
     if (!admin.rowCount) return res.status(404).json({ error: 'This check-in link is invalid.' });
-    const result = await db.query(
-      'INSERT INTO attendees (admin_id, name, phone, email, company, profession, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, phone, email, company, profession, notes',
-      [admin.rows[0].id, fields.name, fields.phone, fields.email, fields.company, fields.profession, fields.notes]
-    );
+    const result = await insertAttendee(admin.rows[0].id, fields, 'id, code, name, phone, email, company, profession, notes');
     notifyDashboard(admin.rows[0].id);
     res.status(201).json({ attendee: result.rows[0] });
   } catch (error) {
@@ -330,7 +392,7 @@ app.post('/api/public/:token/find', lookupLimit, async (req, res, next) => {
   if (!name) return res.status(400).json({ error: 'Enter your full name.' });
   try {
     const result = await db.query(
-      `SELECT a.id, a.name, a.phone, a.email, a.company, a.profession, a.notes, c.checked_in_at AS checked_in_today
+      `SELECT a.id, a.code, a.name, a.phone, a.email, a.company, a.profession, a.notes, c.checked_in_at AS checked_in_today
        FROM attendees a JOIN admins d ON d.id = a.admin_id
        LEFT JOIN checkins c ON c.attendee_id = a.id AND c.checkin_date = (now() AT TIME ZONE $3)::date
        WHERE d.public_token = $1 AND lower(a.name) = lower($2)
@@ -349,7 +411,7 @@ app.post('/api/public/:token/attend', lookupLimit, async (req, res, next) => {
   if (!uuidPattern.test(attendeeId)) return res.status(404).json({ error: 'Registration not found. Search your name again.' });
   try {
     const attendee = await db.query(
-      `SELECT a.id, a.admin_id, a.name, a.phone, a.email, a.company, a.profession, a.notes
+      `SELECT a.id, a.admin_id, a.code, a.name, a.phone, a.email, a.company, a.profession, a.notes
        FROM attendees a JOIN admins d ON d.id = a.admin_id
        WHERE d.public_token = $1 AND a.id = $2`,
       [req.params.token, attendeeId]
@@ -358,22 +420,8 @@ app.post('/api/public/:token/attend', lookupLimit, async (req, res, next) => {
       return res.status(404).json({ error: 'Registration not found. Search your name again.' });
     }
     const { admin_id: adminId, ...details } = attendee.rows[0];
-    // The unique (attendee, day) constraint makes a repeat scan on the same day a no-op.
-    const inserted = await db.query(
-      `INSERT INTO checkins (attendee_id, admin_id, checkin_date) VALUES ($1, $2, (now() AT TIME ZONE $3)::date)
-       ON CONFLICT (attendee_id, checkin_date) DO NOTHING
-       RETURNING checked_in_at`,
-      [attendeeId, adminId, eventTimeZone]
-    );
-    const alreadyCheckedIn = !inserted.rowCount;
-    const checkin = alreadyCheckedIn
-      ? await db.query(
-        'SELECT checked_in_at FROM checkins WHERE attendee_id = $1 AND checkin_date = (now() AT TIME ZONE $2)::date',
-        [attendeeId, eventTimeZone]
-      )
-      : inserted;
-    if (!alreadyCheckedIn) notifyDashboard(adminId);
-    res.json({ attendee: { ...details, checked_in_today: checkin.rows[0].checked_in_at }, alreadyCheckedIn });
+    const { checkedInAt, alreadyCheckedIn } = await checkInToday(attendeeId, adminId);
+    res.json({ attendee: { ...details, checked_in_today: checkedInAt }, alreadyCheckedIn });
   } catch (error) {
     next(error);
   }
@@ -415,6 +463,8 @@ async function start() {
       created_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS attendees_admin_created_idx ON attendees (admin_id, created_at DESC);
+    ALTER TABLE attendees ADD COLUMN IF NOT EXISTS code text;
+    CREATE UNIQUE INDEX IF NOT EXISTS attendees_admin_code_idx ON attendees (admin_id, code);
     CREATE TABLE IF NOT EXISTS checkins (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       attendee_id uuid NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
@@ -434,6 +484,18 @@ async function start() {
   await db.query('SELECT now() AT TIME ZONE $1', [eventTimeZone]).catch(() => {
     throw new Error(`EVENT_TIMEZONE "${eventTimeZone}" is not a recognised time zone.`);
   });
+  // Give guests registered before check-in codes existed a code of their own.
+  const uncoded = await db.query('SELECT id FROM attendees WHERE code IS NULL');
+  for (const { id } of uncoded.rows) {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await db.query('UPDATE attendees SET code = $1 WHERE id = $2', [newCheckinCode(), id]);
+        break;
+      } catch (error) {
+        if (error.code !== '23505' || attempt === 5) throw error;
+      }
+    }
+  }
   // One-time move of single check-ins (attendees.attended_at) into the per-day checkins table.
   await db.transaction(async (tx) => {
     await tx.query(

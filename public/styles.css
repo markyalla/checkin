@@ -163,6 +163,9 @@ td:first-child { color: var(--ink); font-weight: 700; }
 .search-field input::placeholder { color: #a3aaa4; }
 .filter-label select { height: 37px; min-width: 130px; padding: 0 27px 0 10px; border: 1px solid #e1e6df; border-radius: 3px; background: white; color: #5d6961; font-size: 11px; }
 .day-picker select { min-width: 150px; height: 33px; }
+.desk-panel { max-width: 460px; margin-top: 28px; }
+.desk-panel .match-list { margin-top: 18px; }
+.checkin-code { font-family: var(--font-display); font-weight: 700; letter-spacing: .08em; }
 .selected-row td { background: var(--leaf); }
 .row-actions { display: flex; justify-content: flex-end; gap: 7px; }
 .small-action { padding: 5px 7px; border: 0; border-radius: 3px; background: transparent; color: #6f7971; font-size: 10px; font-weight: 700; cursor: pointer; }
