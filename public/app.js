@@ -124,6 +124,12 @@ function createStatus(attendedAt) {
   return element('span', `status-pill ${attendedAt ? '' : 'status-pending'}`, attendedAt ? 'Arrived' : 'Expected');
 }
 
+// On phones the tables become cards, and each cell shows its column name from data-label.
+function labelCells(body) {
+  const headings = [...body.closest('table').querySelectorAll('thead th')].map((th) => th.textContent.trim());
+  [...body.rows].forEach((row) => [...row.cells].forEach((cell, index) => { cell.dataset.label = headings[index] || ''; }));
+}
+
 function createGuestCell(attendee) {
   const cell = element('td');
   const primary = element('div', 'guest-primary', attendee.name);
@@ -164,6 +170,7 @@ function renderDailyBreakdown(days) {
     row.append(actions);
     body.append(row);
   });
+  labelCells(body);
 }
 
 function renderDashboard() {
@@ -195,6 +202,7 @@ function renderDashboard() {
     row.append(status);
     recentBody.append(row);
   });
+  labelCells(recentBody);
   renderGuestList();
 }
 
@@ -237,6 +245,7 @@ function renderGuestList() {
     row.append(actions);
     body.append(row);
   });
+  labelCells(body);
   const hasGuests = state.attendees.length > 0;
   $('#guest-empty').hidden = hasGuests;
   $('#search-empty').hidden = !hasGuests || matching.length > 0;
