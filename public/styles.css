@@ -73,6 +73,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .auth-tab.active { color: var(--forest); }
 .auth-tab.active::after { position: absolute; right: 20%; bottom: -1px; left: 20%; height: 2px; background: var(--coral); content: ""; }
 .form-stack { display: grid; gap: 16px; }
+.phone-input { display: grid; grid-template-columns: minmax(0, 132px) minmax(0, 1fr); gap: 8px; }
+.phone-input select { padding-right: 6px; padding-left: 10px; }
 .field { display: grid; gap: 8px; color: var(--ink); font-size: 11px; font-weight: 700; }
 .field input, .field textarea, .field select { width: 100%; min-height: 45px; padding: 0 13px; border: 1px solid var(--line); border-radius: 8px; background: var(--mint); color: var(--ink); font-size: 13px; font-weight: 400; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
 .field textarea { min-height: 83px; padding-top: 12px; resize: vertical; }

@@ -130,6 +130,42 @@ function labelCells(body) {
   [...body.rows].forEach((row) => [...row.cells].forEach((cell, index) => { cell.dataset.label = headings[index] || ''; }));
 }
 
+function countryFlag(iso) {
+  return String.fromCodePoint(...[...iso].map((letter) => 0x1f1a5 + letter.charCodeAt(0)));
+}
+
+function fillCountrySelects() {
+  $$('[data-country-select]').forEach((select) => {
+    select.replaceChildren(...window.COUNTRY_DIAL_CODES.map(([iso, name, dial]) => {
+      const option = element('option', '', `${countryFlag(iso)} ${dial} ${name}`);
+      option.value = iso;
+      return option;
+    }));
+    select.value = 'GH';
+  });
+}
+
+// Phones are stored as one string, "+233 241234567". The trunk 0 people type locally (024...) is dropped,
+// except for Italy, where it is part of the international number.
+function joinPhone(payload) {
+  const [iso, , dial] = window.COUNTRY_DIAL_CODES.find(([code]) => code === payload.phoneCountry) || window.COUNTRY_DIAL_CODES[0];
+  const number = (payload.phoneNumber || '').replace(/[^\d]/g, '');
+  const { phoneCountry, phoneNumber, ...rest } = payload;
+  return { ...rest, phone: `${dial} ${iso === 'IT' ? number : number.replace(/^0/, '')}` };
+}
+
+function splitPhone(phone = '') {
+  const digits = phone.replace(/[^\d+]/g, '');
+  if (digits.startsWith('+')) {
+    // Longest dial code wins, so +1876 (Jamaica) is not read as +1 followed by 876.
+    const match = window.COUNTRY_DIAL_CODES
+      .filter(([, , dial]) => digits.startsWith(dial))
+      .sort((a, b) => b[2].length - a[2].length)[0];
+    if (match) return { phoneCountry: match[0], phoneNumber: digits.slice(match[2].length) };
+  }
+  return { phoneCountry: 'GH', phoneNumber: phone };
+}
+
 function createGuestCell(attendee) {
   const cell = element('td');
   const primary = element('div', 'guest-primary', attendee.name);
@@ -291,7 +327,8 @@ function openAttendeeDialog(attendee = null) {
   $('#modal-title').textContent = attendee ? 'Edit guest' : 'New guest';
   $('#modal-eyebrow').textContent = attendee ? 'UPDATE YOUR GUEST LIST' : 'ADD TO YOUR GUEST LIST';
   $('#save-attendee-button').innerHTML = attendee ? 'Save changes <span aria-hidden="true">→</span>' : 'Save guest <span aria-hidden="true">→</span>';
-  if (attendee) Object.entries(attendee).forEach(([key, value]) => { if (form.elements.namedItem(key)) form.elements.namedItem(key).value = value || ''; });
+  form.elements.phoneCountry.value = 'GH';
+  if (attendee) Object.entries({ ...attendee, ...splitPhone(attendee.phone) }).forEach(([key, value]) => { if (form.elements.namedItem(key)) form.elements.namedItem(key).value = value || ''; });
   $('#attendee-dialog').showModal();
 }
 
@@ -398,6 +435,7 @@ function renderMatches(attendees) {
 }
 
 async function initialize() {
+  fillCountrySelects();
   const route = window.location.pathname.match(/^\/checkin\/([0-9a-f-]+)$/i);
   if (route) {
     state.checkinToken = route[1];
@@ -486,7 +524,7 @@ $('#guest-table-body').addEventListener('click', async (event) => {
 
 $('#attendee-form').addEventListener('submit', async (event) => {
   event.preventDefault();
-  const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
+  const payload = joinPhone(Object.fromEntries(new FormData(event.currentTarget).entries()));
   const button = $('#save-attendee-button');
   button.disabled = true;
   $('#attendee-error').textContent = '';
@@ -650,7 +688,7 @@ $('#cancel-public-register').addEventListener('click', () => {
 $('#public-register-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const button = $('#submit-public-register');
-  const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
+  const payload = joinPhone(Object.fromEntries(new FormData(event.currentTarget).entries()));
   button.disabled = true;
   $('#public-register-error').textContent = '';
   try {

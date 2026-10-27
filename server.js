@@ -125,6 +125,9 @@ function attendeeFields(body) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fields.email)) {
     return { error: 'Enter a valid email address.' };
   }
+  if (fields.phone.replace(/\D/g, '').length < 6) {
+    return { error: 'Enter a valid phone number.' };
+  }
   return { fields };
 }
 

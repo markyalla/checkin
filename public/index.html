@@ -128,10 +128,10 @@
         <form id="public-register-form" class="form-stack">
           <label class="field">Full name<input name="name" autocomplete="name" required maxlength="120" placeholder="Your full name"></label>
           <label class="field">Email<input name="email" type="email" autocomplete="email" required maxlength="180" placeholder="you@example.com"></label>
-          <label class="field">Phone<input name="phone" type="tel" autocomplete="tel" required maxlength="40" placeholder="Your phone number"></label>
+          <div class="field"><span>Phone</span><div class="phone-input"><select name="phoneCountry" aria-label="Country code" data-country-select></select><input name="phoneNumber" type="tel" autocomplete="tel-national" inputmode="tel" required maxlength="24" pattern="[0-9 \(\)\-]{6,20}" title="Digits only, without the country code" placeholder="24 123 4567" aria-label="Phone number"></div></div>
           <label class="field">Organisation<input name="company" autocomplete="organization" required maxlength="120" placeholder="Your organisation"></label>
-          <label class="field">Profession<input name="profession" maxlength="120" placeholder="Your role or field"></label>
-          <label class="field">Other details<textarea name="notes" rows="3" maxlength="1000" placeholder="Anything else the event team should know"></textarea></label>
+          <label class="field">Profession<input name="profession" maxlength="120" placeholder="Optional"></label>
+          <label class="field">Other details<textarea name="notes" rows="3" maxlength="1000" placeholder="Optional"></textarea></label>
           <p class="form-error" id="public-register-error" aria-live="polite"></p>
           <div class="public-register-actions"><button class="button button-outline" id="cancel-public-register" type="button">Back</button><button class="button button-primary" id="submit-public-register" type="submit">Register <span aria-hidden="true">→</span></button></div>
         </form>
@@ -147,12 +147,12 @@
     <form id="attendee-form" class="modal-form">
       <div class="modal-heading"><div><p class="eyebrow" id="modal-eyebrow">ADD TO YOUR GUEST LIST</p><h2 id="modal-title">New guest</h2></div><button class="icon-close" type="button" data-close-modal aria-label="Close dialog">×</button></div>
       <div class="form-grid">
-        <label class="field field-span">Full name <span class="required-mark">*</span><input name="name" required maxlength="120" placeholder="Guest full name"></label>
-        <label class="field">Email<input name="email" type="email" maxlength="180" required placeholder="guest@email.com"></label>
-        <label class="field">Phone<input name="phone" type="tel" maxlength="40" required placeholder="+1 555 000 0000"></label>
-        <label class="field field-span">Organisation<input name="company" maxlength="120" required placeholder="Guest organisation"></label>
-        <label class="field">Profession<input name="profession" maxlength="120" placeholder="Role or field"></label>
-        <label class="field field-span">Other details<textarea name="notes" rows="3" maxlength="1000" placeholder="Dietary needs, accessibility, or any notes"></textarea></label>
+        <label class="field field-span"><span>Full name <span class="required-mark">*</span></span><input name="name" required maxlength="120" placeholder="Guest full name"></label>
+        <label class="field field-span"><span>Email <span class="required-mark">*</span></span><input name="email" type="email" maxlength="180" required placeholder="guest@email.com"></label>
+        <div class="field field-span"><span>Phone <span class="required-mark">*</span></span><div class="phone-input"><select name="phoneCountry" aria-label="Country code" data-country-select></select><input name="phoneNumber" type="tel" inputmode="tel" required maxlength="24" pattern="[0-9 \(\)\-]{6,20}" title="Digits only, without the country code" placeholder="24 123 4567" aria-label="Phone number"></div></div>
+        <label class="field field-span"><span>Organisation <span class="required-mark">*</span></span><input name="company" maxlength="120" required placeholder="Guest organisation"></label>
+        <label class="field field-span">Profession<input name="profession" maxlength="120" placeholder="Optional"></label>
+        <label class="field field-span">Other details<textarea name="notes" rows="3" maxlength="1000" placeholder="Optional: dietary needs, accessibility, or any notes"></textarea></label>
       </div>
       <p class="form-error" id="attendee-error" aria-live="polite"></p>
       <div class="modal-actions"><button class="button button-outline" type="button" data-close-modal>Cancel</button><button class="button button-primary" type="submit" id="save-attendee-button">Save guest <span aria-hidden="true">→</span></button></div>
@@ -163,6 +163,7 @@
     <form id="event-form" class="modal-form"><div class="modal-heading"><div><p class="eyebrow">MAKE IT YOURS</p><h2>Event name</h2></div><button class="icon-close" type="button" data-close-modal aria-label="Close dialog">×</button></div><label class="field">What are you gathering for?<input name="eventName" maxlength="160" required></label><p class="form-error" id="event-error" aria-live="polite"></p><div class="modal-actions"><button class="button button-outline" type="button" data-close-modal>Cancel</button><button class="button button-primary" type="submit">Save name</button></div></form>
   </dialog>
 
+  <script src="/countries.js" defer></script>
   <script src="/app.js" defer></script>
 </body>
 </html>
