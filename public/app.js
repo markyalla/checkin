@@ -248,7 +248,7 @@ function renderGuestList() {
   const filter = $('#attendance-filter').value;
   const day = state.selectedDay;
   const matching = state.attendees.filter((attendee) => {
-    const searchable = [attendee.name, attendee.code, attendee.email, attendee.phone, attendee.company, attendee.profession].join(' ').toLowerCase();
+    const searchable = [attendee.name, attendee.code, attendee.email, attendee.phone, attendee.company, attendee.profession, attendee.notes].join(' ').toLowerCase();
     const matchesQuery = !query || searchable.includes(query);
     const matchesFilter = filter === 'all' || (filter === 'attended' ? Boolean(checkinOn(attendee, day)) : !checkinOn(attendee, day));
     return matchesQuery && matchesFilter;
@@ -262,6 +262,9 @@ function renderGuestList() {
     row.append(element('td', '', [attendee.email, attendee.phone].filter(Boolean).join(' · ') || '—'));
     row.append(element('td', '', attendee.company || '—'));
     row.append(element('td', '', attendee.profession || '—'));
+    const notes = element('td', 'notes-cell', attendee.notes || '—');
+    if (attendee.notes) notes.title = attendee.notes;
+    row.append(notes);
     const arrival = document.createElement('td');
     const arrivedAt = checkinOn(attendee, day);
     arrival.append(arrivedAt ? element('span', 'status-pill', formatDate(arrivedAt)) : createStatus(null));

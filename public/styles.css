@@ -91,7 +91,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .sidebar { position: fixed; z-index: 3; inset: 0 auto 0 0; display: flex; flex-direction: column; width: 238px; padding: 28px 19px 18px; border-right: 1px solid var(--line); background: white; }
 .sidebar > .wordmark { margin: 0 0 43px 7px; }
 .workspace-label { padding: 0 10px; color: #929a93; font-size: 9px; font-weight: 700; letter-spacing: 1.2px; }
-.sidebar-event { display: flex; align-items: center; gap: 9px; min-height: 42px; margin: 9px 0 23px; padding: 0 10px; overflow: hidden; color: var(--forest); font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-event { display: flex; align-items: center; gap: 9px; min-height: 42px; margin: 9px 0 23px; padding: 0 10px; overflow: hidden; color: var(--forest); font-size: 12px; font-weight: 700; text-overflow: ellipsis; }
 .event-dot, .live-indicator i, .checkin-label i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--coral); box-shadow: 0 0 0 3px #27ae4e20; }
 .side-nav { display: grid; gap: 5px; }
 .nav-link { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 43px; padding: 0 11px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); text-align: left; font-size: 12px; font-weight: 600; cursor: pointer; }
@@ -169,6 +169,8 @@ td:first-child { color: var(--ink); font-weight: 700; }
 .desk-panel .match-list { margin-top: 18px; }
 .checkin-code { font-family: var(--font-display); font-weight: 700; letter-spacing: .08em; }
 .selected-row td { background: var(--leaf); }
+/* Long notes are cut to one line in the table; the full text is in the tooltip and on phone cards. */
+.notes-cell { width: 100%; min-width: 120px; max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-actions { display: flex; justify-content: flex-end; gap: 7px; }
 .small-action { padding: 5px 7px; border: 0; border-radius: 3px; background: transparent; color: #6f7971; font-size: 10px; font-weight: 700; cursor: pointer; }
 .small-action:hover { background: #eef2ec; color: var(--forest); }
@@ -259,6 +261,13 @@ td:first-child { color: var(--ink); font-weight: 700; }
   .metric-card { padding-right: 14px; padding-left: 15px; }
   .qr-layout { gap: 34px; }
 }
+/* Narrow laptops: tighten the guest list so every column, Edit and Remove included, fits without scrolling. */
+@media (min-width: 761px) and (max-width: 1279px) {
+  .guest-list-section th, .guest-list-section td { padding-right: 8px; padding-left: 8px; }
+  .guest-list-section th:first-child, .guest-list-section td:first-child { padding-left: 16px; }
+  .guest-list-section .notes-cell { min-width: 56px; }
+  .guest-list-section .small-action { padding-right: 4px; padding-left: 4px; }
+}
 @media (max-width: 760px) {
   .auth-layout { display: block; background: var(--paper); }
   .auth-story { display: none; }
@@ -322,7 +331,8 @@ td:first-child { color: var(--ink); font-weight: 700; }
   .table-wrap tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; padding: 14px 16px; border-top: 1px solid #edf0eb; }
   .table-wrap td { min-width: 0; padding: 0; border: 0; overflow-wrap: anywhere; }
   .table-wrap td::before { display: block; margin-bottom: 3px; color: #929a93; font-size: 9px; font-weight: 700; letter-spacing: .6px; content: attr(data-label); }
-  .table-wrap td:first-child, .table-wrap td:last-child:has(.row-actions) { grid-column: 1 / -1; }
+  .table-wrap td:first-child, .table-wrap td:last-child:has(.row-actions), .table-wrap .notes-cell { grid-column: 1 / -1; }
+  .table-wrap .notes-cell { max-width: none; white-space: pre-line; }
   .table-wrap td:first-child::before, .table-wrap td[data-label=""]::before { display: none; }
   .table-wrap td:first-child { font-size: 13px; }
   .row-actions { justify-content: flex-start; gap: 4px; margin-left: -7px; }
