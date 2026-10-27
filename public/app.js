@@ -1,4 +1,4 @@
-const state = { admin: null, attendees: [], today: null, selectedDay: null, deskAttendee: null, authMode: 'login', editingId: null, checkinToken: null, lastLookupName: '', dashboardStream: null };
+const state = { codeMisses: 0, admin: null, attendees: [], today: null, selectedDay: null, deskAttendee: null, authMode: 'login', editingId: null, checkinToken: null, lastLookupName: '', dashboardStream: null };
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
@@ -329,6 +329,45 @@ function renderDeskResult(attendee) {
   state.deskAttendee = attendee;
 }
 
+// After this many wrong codes on one device, the guest is asked to search by name instead. This is
+// a guide for real guests; the server's own limit is what stops automated guessing.
+const maxCodeMisses = 4;
+const isCheckinCode = (value) => /^\d{4}$/.test(value.replace(/\s+/g, ''));
+
+function codeMissKey() {
+  return `checkin-code-misses:${state.checkinToken}`;
+}
+
+function codeMisses() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(codeMissKey()));
+    return saved?.day === new Date().toDateString() ? saved.count : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function recordCodeMiss() {
+  const count = codeMisses() + 1;
+  try {
+    localStorage.setItem(codeMissKey(), JSON.stringify({ day: new Date().toDateString(), count }));
+  } catch {
+    // Private browsing can block storage; the count then lasts only for this page.
+  }
+  state.codeMisses = Math.max(state.codeMisses + 1, count);
+  return state.codeMisses;
+}
+
+function codeSearchLocked() {
+  return Math.max(codeMisses(), state.codeMisses) >= maxCodeMisses;
+}
+
+function lockCodeSearch() {
+  $('.checkin-subtitle').textContent = 'Enter your registered name and we’ll find your details.';
+  $('#find-label').textContent = 'Your full name';
+  $('#find-name').placeholder = 'As it appears on your registration';
+}
+
 function renderMatches(attendees) {
   const list = $('#match-list');
   list.replaceChildren();
@@ -358,6 +397,7 @@ async function initialize() {
       const data = await api(`/api/public/${state.checkinToken}`);
       $('#checkin-title').textContent = `Welcome to ${data.eventName}.`;
       document.title = `${data.eventName} · Agile in Africa`;
+      if (codeSearchLocked()) lockCodeSearch();
     } catch (error) {
       $('#checkin-title').textContent = 'Check-in unavailable.';
       $('#find-form').hidden = true;
@@ -545,6 +585,12 @@ $('#find-form').addEventListener('submit', async (event) => {
   $('#register-prompt').hidden = true;
   $('#register-success').hidden = true;
   $('#match-list').replaceChildren();
+  const byCode = isCheckinCode(state.lastLookupName);
+  if (byCode && codeSearchLocked()) {
+    $('#find-error').textContent = `You have used all ${maxCodeMisses} code attempts. Please search with your full name instead.`;
+    $('#find-name').value = '';
+    return;
+  }
   const button = $('#find-button');
   button.disabled = true;
   try {
@@ -556,7 +602,15 @@ $('#find-form').addEventListener('submit', async (event) => {
     $('#find-success').hidden = false;
   } catch (error) {
     $('#find-error').textContent = error.message;
-    $('#register-prompt').hidden = error.status !== 404;
+    if (byCode && error.status === 404) {
+      const left = maxCodeMisses - recordCodeMiss();
+      $('#find-error').textContent = left > 0
+        ? `That code didn't match a registration. ${left} code ${left === 1 ? 'attempt' : 'attempts'} left.`
+        : `That code didn't match either. You have used all ${maxCodeMisses} code attempts, so please search with your full name instead.`;
+    }
+    if (byCode && (error.status === 429 || codeSearchLocked())) lockCodeSearch();
+    // A mistyped code doesn't mean the guest is unregistered, so only offer registration after a name search.
+    $('#register-prompt').hidden = error.status !== 404 || byCode;
   } finally {
     $('#find-name').value = '';
     button.disabled = false;
