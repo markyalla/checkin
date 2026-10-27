@@ -89,6 +89,13 @@ const authLimit = rateLimit({
 });
 // Guests on venue Wi-Fi or carrier NAT share one public IP, and a guest can need 2-5 requests
 // (search, retry, register, check in), so this allows a crowded entrance while still slowing automated name guessing.
+// Four-digit codes are guessable, so failed code searches on the public page are limited separately:
+// a guest who mistypes is unaffected, but stepping through codes to read guests' details is cut off.
+const codeMissLimit = rateLimit({
+  windowMs: 10 * 60 * 1000, limit: 100, skipSuccessfulRequests: true, standardHeaders: false, legacyHeaders: false,
+  skip: (req) => !codePattern.test(text(req.body?.query ?? req.body?.name, 120).replace(/\s+/g, '')),
+  message: { error: 'Too many incorrect codes. Please search by your full name, or ask the event team for help.' }
+});
 const lookupLimit = rateLimit({
   windowMs: 60 * 1000, limit: 1000, standardHeaders: 'draft-7', legacyHeaders: false,
   message: { error: 'The check-in desk is very busy. Please wait a minute and try again.' }
@@ -121,9 +128,13 @@ function attendeeFields(body) {
   return { fields };
 }
 
-// Six digits are easy to read out at the desk and to type on any phone keypad.
+// Four random digits (1000-9999, never sequential) are easy to say at the desk and type on any keypad.
+// 9000 codes per event leaves plenty of room for retries to find a free one at conference scale.
+const codePattern = /^\d{4}$/;
+const maxCodeAttempts = 20;
+
 function newCheckinCode() {
-  return String(crypto.randomInt(100000, 1000000));
+  return String(crypto.randomInt(1000, 10000));
 }
 
 async function insertAttendee(adminId, fields, returning) {
@@ -135,7 +146,7 @@ async function insertAttendee(adminId, fields, returning) {
         [adminId, newCheckinCode(), fields.name, fields.phone, fields.email, fields.company, fields.profession, fields.notes]
       );
     } catch (error) {
-      if (error.code !== '23505' || attempt === 5) throw error;
+      if (error.code !== '23505' || attempt === maxCodeAttempts) throw error;
     }
   }
 }
@@ -323,7 +334,7 @@ app.put('/api/attendees/:id', requireAdmin, async (req, res, next) => {
 
 app.get('/api/attendees/code/:code', requireAdmin, async (req, res, next) => {
   const code = text(req.params.code, 20).replace(/\s+/g, '');
-  if (!/^\d{6}$/.test(code)) return res.status(400).json({ error: 'Check-in codes are 6 digits.' });
+  if (!codePattern.test(code)) return res.status(400).json({ error: 'Check-in codes are 4 digits.' });
   try {
     const result = await db.query(
       `SELECT a.id, a.code, a.name, a.phone, a.email, a.company, a.profession, a.notes, c.checked_in_at AS checked_in_today
@@ -387,19 +398,26 @@ app.post('/api/public/:token/register', lookupLimit, async (req, res, next) => {
   }
 });
 
-app.post('/api/public/:token/find', lookupLimit, async (req, res, next) => {
-  const name = text(req.body.name, 120);
-  if (!name) return res.status(400).json({ error: 'Enter your full name.' });
+app.post('/api/public/:token/find', lookupLimit, codeMissLimit, async (req, res, next) => {
+  // Guests can type either their full name or their 4-digit check-in code (`name` is accepted from older pages).
+  const query = text(req.body.query ?? req.body.name, 120);
+  if (!query) return res.status(400).json({ error: 'Enter your full name or check-in code.' });
+  const code = query.replace(/\s+/g, '');
+  const byCode = codePattern.test(code);
   try {
     const result = await db.query(
       `SELECT a.id, a.code, a.name, a.phone, a.email, a.company, a.profession, a.notes, c.checked_in_at AS checked_in_today
        FROM attendees a JOIN admins d ON d.id = a.admin_id
        LEFT JOIN checkins c ON c.attendee_id = a.id AND c.checkin_date = (now() AT TIME ZONE $3)::date
-       WHERE d.public_token = $1 AND lower(a.name) = lower($2)
+       WHERE d.public_token = $1 AND ${byCode ? 'a.code = $2' : 'lower(a.name) = lower($2)'}
        ORDER BY a.created_at`,
-      [req.params.token, name, eventTimeZone]
+      [req.params.token, byCode ? code : query, eventTimeZone]
     );
-    if (!result.rowCount) return res.status(404).json({ error: 'No registration found with that exact name. Check the spelling or ask the event team for help.' });
+    if (!result.rowCount) {
+      return res.status(404).json({ error: byCode
+        ? 'No registration found with that code. Check the digits, try your full name, or ask the event team for help.'
+        : 'No registration found with that exact name. Check the spelling, try your check-in code, or ask the event team for help.' });
+    }
     res.json({ attendees: result.rows });
   } catch (error) {
     next(error);
@@ -484,15 +502,15 @@ async function start() {
   await db.query('SELECT now() AT TIME ZONE $1', [eventTimeZone]).catch(() => {
     throw new Error(`EVENT_TIMEZONE "${eventTimeZone}" is not a recognised time zone.`);
   });
-  // Give guests registered before check-in codes existed a code of their own.
-  const uncoded = await db.query('SELECT id FROM attendees WHERE code IS NULL');
+  // Give guests registered before 4-digit codes existed (no code, or an older 6-digit one) a code of their own.
+  const uncoded = await db.query(`SELECT id FROM attendees WHERE code IS NULL OR code !~ '^[0-9]{4}$'`);
   for (const { id } of uncoded.rows) {
     for (let attempt = 1; ; attempt++) {
       try {
         await db.query('UPDATE attendees SET code = $1 WHERE id = $2', [newCheckinCode(), id]);
         break;
       } catch (error) {
-        if (error.code !== '23505' || attempt === 5) throw error;
+        if (error.code !== '23505' || attempt === maxCodeAttempts) throw error;
       }
     }
   }

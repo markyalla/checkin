@@ -549,7 +549,7 @@ $('#find-form').addEventListener('submit', async (event) => {
   button.disabled = true;
   try {
     const result = await api(`/api/public/${state.checkinToken}/find`, {
-      method: 'POST', body: JSON.stringify({ name: state.lastLookupName })
+      method: 'POST', body: JSON.stringify({ query: state.lastLookupName })
     });
     renderMatches(result.attendees);
     $('#find-success').textContent = 'Registration found. Review your details below.';
@@ -569,12 +569,13 @@ $('#show-register-button').addEventListener('click', () => {
   $('#find-success').hidden = true;
   $('#public-register-error').textContent = '';
   $('#public-register-form').reset();
-  $('#public-register-form [name="name"]').value = state.lastLookupName;
+  // A failed code search is not a name, so only carry over what looks like one.
+  $('#public-register-form [name="name"]').value = /^[\d\s]+$/.test(state.lastLookupName) ? '' : state.lastLookupName;
   $('#register-success').hidden = true;
   $('#find-form').hidden = true;
   $('#register-prompt').hidden = true;
   $('#public-register-panel').hidden = false;
-  $('#public-register-form [name="email"]').focus();
+  $(`#public-register-form [name="${$('#public-register-form [name="name"]').value ? 'email' : 'name'}"]`).focus();
 });
 
 $('#cancel-public-register').addEventListener('click', () => {

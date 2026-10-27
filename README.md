@@ -7,9 +7,9 @@ A Node.js check-in app with an embedded PostgreSQL-compatible database. There is
 1. The administrator registers and signs in, then adds attendees with full name, email, phone, and organisation. Profession and other details are optional.
 2. The administrator prints the event's entrance QR code.
 3. A guest scans it and lands on **Welcome to Agile in Africa 2026**.
-4. The guest enters their registered name, reviews the matching saved details, and selects **Check in for today**. If no registration matches, they can choose **Register here**, complete the same attendee fields, then search their name and check in.
+4. The guest enters their registered name or 4-digit check-in code, reviews the matching saved details, and selects **Check in for today**. If no registration matches, they can choose **Register here**, complete the same attendee fields, then search their name and check in.
 5. The app saves one check-in per guest per day. A second scan on the same day keeps the first arrival time; the guest can check in again on the next event day without registering again.
-6. Every guest, whether added by the admin or self-registered, gets a unique 6-digit check-in code. It appears in the guest list and is shown to the guest when they register or find their name. Guests without a smartphone tell the code at the desk; staff open **Desk check-in**, type the code, confirm the details, and check them in for today.
+6. Every guest, whether added by the admin or self-registered, gets a unique, randomly chosen 4-digit check-in code. It appears in the guest list and is shown to the guest when they register or find themselves. On the check-in page a guest can search by full name or by code. Guests without a smartphone tell the code at the desk; staff open **Desk check-in**, type the code, confirm the details, and check them in for today.
 7. The admin overview and guest list show arrivals for the day chosen in the top bar, and **Daily check-ins** breaks attendance down day by day.
 
 ## Run locally
