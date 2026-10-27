@@ -267,7 +267,14 @@ td:first-child { color: var(--ink); font-weight: 700; }
   .sidebar { position: static; display: grid; grid-template-columns: auto 1fr; align-items: center; width: auto; height: auto; padding: 14px 17px 0; border-right: 0; border-bottom: 1px solid var(--line); background: white; }
   .sidebar > .wordmark { margin: 0 0 11px; }
   .sidebar > .wordmark .brand-logo { width: 34px; height: 34px; }
-  .workspace-label, .sidebar-event, .sidebar-bottom { display: none; }
+  .workspace-label, .sidebar-event { display: none; }
+  /* Compact profile beside the logo so sign-out stays reachable on phones. */
+  .sidebar-bottom { display: flex; grid-column: 2; grid-row: 1; justify-self: end; align-items: center; gap: 8px; min-width: 0; margin: 0 0 11px; padding: 0; border: 0; }
+  .admin-profile { gap: 7px; padding: 0; }
+  .avatar { width: 30px; height: 30px; font-size: 12px; }
+  .profile-copy small { display: none; }
+  .profile-copy strong { max-width: 90px; }
+  .signout-button { align-items: center; gap: 5px; min-height: 30px; padding: 0 10px; border: 1px solid var(--line); border-radius: 15px; color: var(--ink); font-size: 10px; font-weight: 700; white-space: nowrap; }
   .side-nav { grid-column: 1 / -1; grid-row: 2; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
   .nav-link { flex-direction: column; justify-content: center; gap: 3px; min-width: 0; min-height: 50px; padding: 6px 2px; border-radius: 8px 8px 0 0; text-align: center; font-size: 10px; line-height: 1.2; }
   .nav-glyph { width: auto; font-size: 14px; }
@@ -329,6 +336,7 @@ td:first-child { color: var(--ink); font-weight: 700; }
   .checkin-footer { flex-direction: column; align-items: center; gap: 5px; min-height: 0; padding: 18px 19px; text-align: center; font-size: 8px; }
 }
 @media (max-width: 420px) {
+  .profile-copy { display: none; }
   .breadcrumb > span:first-child, .crumb-slash { display: none; }
   .page-heading { flex-wrap: wrap; }
   .page-heading > .button { margin-left: auto; }
