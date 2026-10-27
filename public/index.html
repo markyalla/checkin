@@ -127,9 +127,9 @@
         <div class="public-register-heading"><p class="eyebrow">JOIN THE GUEST LIST</p><h2>Register for the event</h2><p>Your details will be saved so you can check in.</p></div>
         <form id="public-register-form" class="form-stack">
           <label class="field">Full name<input name="name" autocomplete="name" required maxlength="120" placeholder="Your full name"></label>
-          <label class="field">Email<input name="email" type="email" autocomplete="email" required maxlength="180" placeholder="you@example.com"></label>
-          <div class="field"><span>Phone</span><div class="phone-input"><select name="phoneCountry" aria-label="Country code" data-country-select></select><input name="phoneNumber" type="tel" autocomplete="tel-national" inputmode="tel" required maxlength="24" pattern="[0-9 \(\)\-]{6,20}" title="Digits only, without the country code" placeholder="24 123 4567" aria-label="Phone number"></div></div>
-          <label class="field">Organisation<input name="company" autocomplete="organization" required maxlength="120" placeholder="Your organisation"></label>
+          <label class="field">Email<input name="email" type="email" autocomplete="email" maxlength="180" placeholder="Optional"></label>
+          <div class="field"><span>Phone</span><div class="phone-input"><select name="phoneCountry" aria-label="Country code" data-country-select></select><input name="phoneNumber" type="tel" autocomplete="tel-national" inputmode="tel" maxlength="24" pattern="[0-9 \(\)\-]{6,20}" title="Digits only, without the country code" placeholder="Optional" aria-label="Phone number"></div></div>
+          <label class="field">Organisation<input name="company" autocomplete="organization" maxlength="120" placeholder="Optional"></label>
           <label class="field">Profession<input name="profession" maxlength="120" placeholder="Optional"></label>
           <label class="field">Other details<textarea name="notes" rows="3" maxlength="1000" placeholder="Optional"></textarea></label>
           <p class="form-error" id="public-register-error" aria-live="polite"></p>
@@ -148,9 +148,9 @@
       <div class="modal-heading"><div><p class="eyebrow" id="modal-eyebrow">ADD TO YOUR GUEST LIST</p><h2 id="modal-title">New guest</h2></div><button class="icon-close" type="button" data-close-modal aria-label="Close dialog">×</button></div>
       <div class="form-grid">
         <label class="field field-span"><span>Full name <span class="required-mark">*</span></span><input name="name" required maxlength="120" placeholder="Guest full name"></label>
-        <label class="field field-span"><span>Email <span class="required-mark">*</span></span><input name="email" type="email" maxlength="180" required placeholder="guest@email.com"></label>
-        <div class="field field-span"><span>Phone <span class="required-mark">*</span></span><div class="phone-input"><select name="phoneCountry" aria-label="Country code" data-country-select></select><input name="phoneNumber" type="tel" inputmode="tel" required maxlength="24" pattern="[0-9 \(\)\-]{6,20}" title="Digits only, without the country code" placeholder="24 123 4567" aria-label="Phone number"></div></div>
-        <label class="field field-span"><span>Organisation <span class="required-mark">*</span></span><input name="company" maxlength="120" required placeholder="Guest organisation"></label>
+        <label class="field field-span">Email<input name="email" type="email" maxlength="180" placeholder="Optional"></label>
+        <div class="field field-span"><span>Phone</span><div class="phone-input"><select name="phoneCountry" aria-label="Country code" data-country-select></select><input name="phoneNumber" type="tel" inputmode="tel" maxlength="24" pattern="[0-9 \(\)\-]{6,20}" title="Digits only, without the country code" placeholder="Optional" aria-label="Phone number"></div></div>
+        <label class="field field-span">Organisation<input name="company" maxlength="120" placeholder="Optional"></label>
         <label class="field field-span">Profession<input name="profession" maxlength="120" placeholder="Optional"></label>
         <label class="field field-span">Other details<textarea name="notes" rows="3" maxlength="1000" placeholder="Optional: dietary needs, accessibility, or any notes"></textarea></label>
       </div>

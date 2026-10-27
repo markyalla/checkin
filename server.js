@@ -119,14 +119,14 @@ function attendeeFields(body) {
     profession: text(body.profession, 120),
     notes: text(body.notes, 1000)
   };
-  if (!fields.name || !fields.email || !fields.phone || !fields.company) {
-    return { error: 'Full name, email, phone, and organisation are required.' };
+  if (!fields.name) {
+    return { error: 'Enter the full name.' };
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fields.email)) {
-    return { error: 'Enter a valid email address.' };
+  if (fields.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fields.email)) {
+    return { error: 'Enter a valid email address, or leave it blank.' };
   }
-  if (fields.phone.replace(/\D/g, '').length < 6) {
-    return { error: 'Enter a valid phone number.' };
+  if (fields.phone && fields.phone.replace(/\D/g, '').length < 6) {
+    return { error: 'Enter a valid phone number, or leave it blank.' };
   }
   return { fields };
 }

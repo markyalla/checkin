@@ -151,6 +151,7 @@ function joinPhone(payload) {
   const [iso, , dial] = window.COUNTRY_DIAL_CODES.find(([code]) => code === payload.phoneCountry) || window.COUNTRY_DIAL_CODES[0];
   const number = (payload.phoneNumber || '').replace(/[^\d]/g, '');
   const { phoneCountry, phoneNumber, ...rest } = payload;
+  if (!number) return { ...rest, phone: '' };
   return { ...rest, phone: `${dial} ${iso === 'IT' ? number : number.replace(/^0/, '')}` };
 }
 

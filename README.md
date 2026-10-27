@@ -4,7 +4,7 @@ A Node.js check-in app with an embedded PostgreSQL-compatible database. There is
 
 ## Attendee flow
 
-1. The administrator registers and signs in, then adds attendees with full name, email, phone, and organisation. Profession and other details are optional.
+1. The administrator registers and signs in, then adds attendees. Only the full name is required; email, phone (with country code, Ghana +233 by default), organisation, profession, and other details are optional.
 2. The administrator prints the event's entrance QR code.
 3. A guest scans it and lands on **Welcome to Agile in Africa 2026**.
 4. The guest enters their registered name or 4-digit check-in code, reviews the matching saved details, and selects **Check in for today**. If no registration matches, they can choose **Register here**, complete the same attendee fields, then search their name and check in.
