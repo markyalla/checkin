@@ -499,6 +499,28 @@ $('#add-attendee-top').addEventListener('click', () => openAttendeeDialog());
 $('#add-attendee-list').addEventListener('click', () => openAttendeeDialog());
 $('#guest-search').addEventListener('input', renderGuestList);
 $('#attendance-filter').addEventListener('change', renderGuestList);
+$('#export-attendees').addEventListener('click', async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const response = await fetch('/api/attendees/export.csv', { credentials: 'same-origin' });
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Could not export the guest list.');
+    }
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'attendees.csv';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('Guest list exported as attendees.csv.');
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+});
 $('#day-select').addEventListener('change', (event) => {
   state.selectedDay = event.target.value;
   renderDashboard();

@@ -159,6 +159,7 @@ td:first-child { color: var(--ink); font-weight: 700; }
 .list-heading { margin-bottom: 23px; }
 .guest-list-section { margin-top: 0; }
 .list-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 14px 17px; border-bottom: 1px solid #edf0eb; }
+.list-toolbar-actions { display: flex; align-items: center; gap: 10px; }
 .search-field { display: flex; align-items: center; gap: 9px; width: min(100%, 330px); height: 37px; padding: 0 11px; border: 1px solid #e1e6df; border-radius: 3px; color: #758079; }
 .search-field > span { font-size: 20px; line-height: 1; }
 .search-field input { width: 100%; border: 0; outline: 0; color: var(--ink); font-size: 11px; }
@@ -323,6 +324,8 @@ td:first-child { color: var(--ink); font-weight: 700; }
   /* The guest list page has its own Add guest button, so the top bar keeps room for the day picker. */
   #add-attendee-top { display: none; }
   .list-toolbar { flex-direction: column; align-items: stretch; gap: 9px; }
+  .list-toolbar-actions { justify-content: space-between; }
+  .list-toolbar-actions .filter-label { flex: 1; }
   .search-field { width: 100%; }
   .filter-label select { width: 100%; }
   /* Tables become one card per row, each cell labelled with its column name. */

@@ -77,6 +77,12 @@ Scan the QR with a phone before printing many copies. It should open the public 
 
 Keep `/opt/checkin/data` on persistent droplet storage and include it in backups. Deploying new code should not delete this directory.
 
+### Export the guest list as CSV
+
+After deploying the update, sign in to the event workspace and open **Guest list**. Select **Export CSV** to download `attendees.csv`, containing each guest's check-in code, name, email, phone, organisation, profession, other details, registration time, and all check-in dates. The export is limited to the signed-in admin's event.
+
+The CSV contains personal information. Store and share it securely, and delete local copies when they are no longer needed.
+
 ### Deploy updates
 
 The droplet runs the code from a git clone in `/opt/checkin`. After changes are pushed to `main` on GitHub, SSH into the droplet and run:

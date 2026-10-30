@@ -110,6 +110,12 @@ function text(value, maxLength = 180) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
 }
 
+function csvCell(value) {
+  const cell = value == null ? '' : String(value);
+  const safeCell = /^[\u0000-\u0020]*[=+\-@]/.test(cell) ? `'${cell}` : cell;
+  return `"${safeCell.replace(/"/g, '""')}"`;
+}
+
 function attendeeFields(body) {
   const fields = {
     name: text(body.name, 120),
@@ -256,6 +262,43 @@ app.get('/api/dashboard', requireAdmin, async (req, res, next) => {
       )
     ]);
     res.json({ today: today.rows[0].today, attendees: attendees.rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/attendees/export.csv', requireAdmin, async (req, res, next) => {
+  try {
+    const result = await db.query(
+      `SELECT a.code, a.name, a.email, a.phone, a.company, a.profession, a.notes,
+         to_char(a.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS "UTC"') AS registered_at,
+         COALESCE(string_agg(to_char(c.checkin_date, 'YYYY-MM-DD'), '; ' ORDER BY c.checkin_date), '') AS checkin_dates
+       FROM attendees a
+       LEFT JOIN checkins c ON c.attendee_id = a.id
+       WHERE a.admin_id = $1
+       GROUP BY a.id
+       ORDER BY a.created_at, a.name`,
+      [req.session.adminId]
+    );
+    const headers = ['Check-in code', 'Name', 'Email', 'Phone', 'Organisation', 'Profession', 'Other details', 'Registered at (UTC)', 'Check-in dates'];
+    const rows = result.rows.map((attendee) => [
+      attendee.code,
+      attendee.name,
+      attendee.email,
+      attendee.phone,
+      attendee.company,
+      attendee.profession,
+      attendee.notes,
+      attendee.registered_at,
+      attendee.checkin_dates
+    ]);
+    const csv = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
+    res.set({
+      'Cache-Control': 'no-store',
+      'Content-Disposition': 'attachment; filename="attendees.csv"',
+      'Content-Type': 'text/csv; charset=utf-8'
+    });
+    res.send(`\uFEFF${csv}`);
   } catch (error) {
     next(error);
   }
